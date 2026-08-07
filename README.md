@@ -86,9 +86,11 @@ To refresh the optional OSM corridor extract:
 
 ```bash
 python3 scripts/prepare-osm-data.py \
-  --bbox -87.36,30.34,-87.10,30.62 \
-  --out public/data/pensacola/osm-corridors.geojson
+  --out public/data/pensacola/osm-corridors.geojson \
+  --metadata-out src/data/pensacola/osmCorridorsMetadata.ts
 ```
+
+By default this fetches OSM highway corridors for Escambia County and Santa Rosa County using their OSM county relation areas. Pass `--bbox west,south,east,north` only when you intentionally want a smaller road-snapping extract.
 
 To refresh the ACS/LODES simulation zones:
 
@@ -98,7 +100,7 @@ python3 scripts/prepare-census-data.py \
   --geojson-out public/data/pensacola/block-groups.geojson
 ```
 
-Pass `--bbox west,south,east,north` only when you intentionally want a smaller clipped study area.
+Pass `--bbox west,south,east,north` only when you intentionally want a smaller clipped Census study area.
 
 ## Modeling Status
 

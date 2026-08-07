@@ -15,11 +15,19 @@ The MVP includes an optional preprocessing path for OpenStreetMap corridors:
 
 ```bash
 python3 scripts/prepare-osm-data.py \
-  --bbox -87.36,30.34,-87.10,30.62 \
-  --out public/data/pensacola/osm-corridors.geojson
+  --out public/data/pensacola/osm-corridors.geojson \
+  --metadata-out src/data/pensacola/osmCorridorsMetadata.ts
 ```
 
-This script uses the Overpass API to fetch OSM highway ways in the Pensacola area. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves stops to the nearest OSM highway within the configured snap distance and draws route geometry between consecutive stops along the extracted road network when a connected path is available.
+This script uses the Overpass API to fetch OSM highway ways in Escambia County and Santa Rosa County by default. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves stops to the nearest OSM highway within the configured snap distance and draws route geometry between consecutive stops along the extracted road network when a connected path is available.
+
+Current generated OSM coverage:
+
+- Escambia County, Florida OSM relation `1210737`.
+- Santa Rosa County, Florida OSM relation `1210706`.
+- 37,930 road corridor features.
+
+Pass `--bbox west,south,east,north` only when intentionally producing a smaller road-snapping extract.
 
 ## Simulation Zones
 

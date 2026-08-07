@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PENSACOLA_OSM_CORRIDOR_METADATA } from '../src/data/pensacola/osmCorridorsMetadata';
 import { PENSACOLA_DATA_METADATA, PENSACOLA_ZONES } from '../src/data/pensacola/zones';
 
 describe('Pensacola ACS/LODES zone data', () => {
@@ -18,5 +19,16 @@ describe('Pensacola ACS/LODES zone data', () => {
     expect(PENSACOLA_ZONES.reduce((sum, zone) => sum + zone.jobs, 0)).toBe(
       PENSACOLA_DATA_METADATA.totalJobs
     );
+  });
+});
+
+describe('Pensacola OSM corridor data', () => {
+  it('uses full Escambia and Santa Rosa county relation areas for road snapping', () => {
+    expect(PENSACOLA_OSM_CORRIDOR_METADATA.coverage.type).toBe('osm-relation-areas');
+    expect(PENSACOLA_OSM_CORRIDOR_METADATA.coverage.counties).toEqual({
+      'Escambia County': 1210737,
+      'Santa Rosa County': 1210706
+    });
+    expect(PENSACOLA_OSM_CORRIDOR_METADATA.featureCount).toBeGreaterThan(30_000);
   });
 });

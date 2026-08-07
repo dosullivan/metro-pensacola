@@ -395,6 +395,10 @@ export function TransitMap() {
   }, [sourceData]);
 
   useEffect(() => {
+    if (!roadSnapEnabled || osmCorridors) {
+      return;
+    }
+
     let isMounted = true;
     fetch('/data/pensacola/osm-corridors.geojson')
       .then((response) => (response.ok ? response.json() : undefined))
@@ -412,7 +416,7 @@ export function TransitMap() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [roadSnapEnabled, osmCorridors]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
