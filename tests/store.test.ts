@@ -21,6 +21,16 @@ function resetStore(scenario: Scenario) {
     roadSnapEnabled: false,
     selectedTechnology: 'brt',
     selectedHeadway: 10,
+    overlays: {
+      population: true,
+      employment: false,
+      density: false,
+      accessibility: false,
+      ridership: false,
+      development: false,
+      landValue: false,
+      catchments: true
+    },
     compareScenarioIds: [scenario.id],
     simulationNotice: undefined,
     inspectedFeature: undefined
@@ -64,6 +74,7 @@ describe('scenario store simulation action', () => {
     const line = scenario.lines[0];
     const originalLineId = line.id;
     const originalPointCount = line.geometry.length;
+    const originalStationCount = line.stations.length;
     resetStore(scenario);
 
     useScenarioStore.getState().removeLastRoutePoint(originalLineId);
@@ -72,6 +83,7 @@ describe('scenario store simulation action', () => {
     const updatedLine = activeScenario.lines.find((candidate) => candidate.id === originalLineId);
     expect(updatedLine).toBeDefined();
     expect(updatedLine?.geometry).toHaveLength(originalPointCount - 1);
+    expect(updatedLine?.stations).toHaveLength(originalStationCount - 1);
     expect(activeScenario.lines).toHaveLength(1);
   });
 
@@ -87,6 +99,27 @@ describe('scenario store simulation action', () => {
     expect(activeScenario.lines).toHaveLength(1);
     expect(activeScenario.lines[0].stations.length).toBeGreaterThan(1);
     expect(useScenarioStore.getState().selectedLineId).toBe(activeScenario.lines[0].id);
+  });
+
+  it('treats zone overlays as exclusive while keeping catchments independent', () => {
+    resetStore(cloneScenario(DEMO_SCENARIO));
+
+    useScenarioStore.getState().toggleOverlay('employment');
+
+    expect(useScenarioStore.getState().overlays.population).toBe(false);
+    expect(useScenarioStore.getState().overlays.employment).toBe(true);
+    expect(useScenarioStore.getState().overlays.catchments).toBe(true);
+
+    useScenarioStore.getState().toggleOverlay('density');
+
+    expect(useScenarioStore.getState().overlays.employment).toBe(false);
+    expect(useScenarioStore.getState().overlays.density).toBe(true);
+    expect(useScenarioStore.getState().overlays.catchments).toBe(true);
+
+    useScenarioStore.getState().toggleOverlay('catchments');
+
+    expect(useScenarioStore.getState().overlays.density).toBe(true);
+    expect(useScenarioStore.getState().overlays.catchments).toBe(false);
   });
 
   it('updates, inserts, and removes route vertices without deleting the line', () => {
@@ -189,6 +222,127 @@ describe('scenario store simulation action', () => {
     expect(updatedLine.geometry).toHaveLength(3);
     expect(updatedLine.geometry[1]).toEqual([-87.2, 30.44]);
     expect(updatedLine.stations[0].coordinate).toEqual([-87.2, 30.44]);
+  });
+
+  it('selects a newly placed station so the delete button removes that station', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    const lineId = scenario.lines[0].id;
+    const originalStationCount = scenario.lines[0].stations.length;
+    resetStore(scenario);
+
+    useScenarioStore.getState().addStation([-87.21, 30.5]);
+    const selectedStationId = useScenarioStore.getState().selectedStationId;
+    expect(selectedStationId).toBeDefined();
+
+    useScenarioStore.getState().removeSelected();
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines.find((candidate) => candidate.id === lineId);
+    expect(line?.stations).toHaveLength(originalStationCount);
+    expect(line?.stations.some((station) => station.id === selectedStationId)).toBe(false);
+    expect(useScenarioStore.getState().selectedLineId).toBe(lineId);
+  });
+
+  it('creates route geometry from the first two stations on a new station-first line', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().createLine();
+    const lineId = useScenarioStore.getState().selectedLineId as string;
+    useScenarioStore.getState().addStation([-87.22, 30.42]);
+    useScenarioStore.getState().addStation([-87.18, 30.46]);
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines.find((candidate) => candidate.id === lineId);
+    expect(line?.stations).toHaveLength(2);
+    expect(line?.geometry).toEqual([
+      [-87.22, 30.42],
+      [-87.18, 30.46]
+    ]);
+  });
+
+  it('creates stations when drawing a route in the default route build mode', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    useScenarioStore.getState().addRouteStop([-87.2, 30.44]);
+    useScenarioStore.getState().addRouteStop([-87.18, 30.46]);
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines[0];
+    expect(line.geometry).toHaveLength(3);
+    expect(line.stations).toHaveLength(3);
+    expect(line.stations.map((station) => station.coordinate)).toEqual(line.geometry);
+  });
+
+  it('undoes the station created by the last route-mode click', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    useScenarioStore.getState().addRouteStop([-87.2, 30.44]);
+    const lineId = selectActiveScenario(useScenarioStore.getState()).lines[0].id;
+
+    useScenarioStore.getState().removeLastRoutePoint(lineId);
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines[0];
+    expect(line.geometry).toEqual([[-87.22, 30.42]]);
+    expect(line.stations).toHaveLength(1);
+    expect(line.stations[0].coordinate).toEqual([-87.22, 30.42]);
+  });
+
+  it('repairs saved geometry-only lines by creating stops from shape points', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines[0].stations = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().repairGeometryOnlyLines();
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines[0];
+    expect(line.stations).toHaveLength(line.geometry.length);
+    expect(line.stations.map((station) => station.coordinate)).toEqual(line.geometry);
+  });
+
+  it('repairs geometry-only lines before running simulation', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines[0].stations = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().runActiveSimulation();
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines[0];
+    expect(line.stations).toHaveLength(line.geometry.length);
+    expect(selectActiveScenario(useScenarioStore.getState()).results?.dailyRidership).toBeGreaterThan(0);
+  });
+
+  it('deletes a selected station from its own line even if another line was selected first', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    const firstLine = scenario.lines[0];
+    const secondLine = {
+      ...cloneScenario(DEMO_SCENARIO).lines[0],
+      id: 'second-line',
+      name: 'Second Line',
+      stations: cloneScenario(DEMO_SCENARIO).lines[0].stations.map((station) => ({
+        ...station,
+        id: `second-${station.id}`,
+        lineId: 'second-line'
+      }))
+    };
+    scenario.lines = [firstLine, secondLine];
+    resetStore(scenario);
+    useScenarioStore.getState().selectLine(firstLine.id);
+
+    const stationId = secondLine.stations[0].id;
+    useScenarioStore.getState().setInspectedFeature({ type: 'station', lineId: secondLine.id, stationId });
+    useScenarioStore.getState().removeSelected();
+
+    const activeScenario = selectActiveScenario(useScenarioStore.getState());
+    const updatedFirstLine = activeScenario.lines.find((line) => line.id === firstLine.id);
+    const updatedSecondLine = activeScenario.lines.find((line) => line.id === secondLine.id);
+    expect(updatedFirstLine?.stations).toHaveLength(firstLine.stations.length);
+    expect(updatedSecondLine?.stations.some((station) => station.id === stationId)).toBe(false);
+    expect(updatedSecondLine?.stations).toHaveLength(secondLine.stations.length - 1);
   });
 
   it('reorders stations on a line', () => {

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BuildControls } from './components/controls/BuildControls';
 import { OverlayPanel } from './components/controls/OverlayPanel';
 import { TransitMap } from './components/map/TransitMap';
@@ -10,6 +11,11 @@ export function App() {
   const scenario = useScenarioStore(selectActiveScenario);
   const mode = useScenarioStore((state) => state.mode);
   const buildTool = useScenarioStore((state) => state.buildTool);
+  const repairGeometryOnlyLines = useScenarioStore((state) => state.repairGeometryOnlyLines);
+
+  useEffect(() => {
+    repairGeometryOnlyLines();
+  }, [repairGeometryOnlyLines, scenario.id, scenario.lines]);
 
   return (
     <main className="app-shell">
@@ -20,7 +26,7 @@ export function App() {
           <span>{scenario.name}</span>
         </div>
         <div className="status-pill">
-          {mode === 'build' ? (buildTool === 'draw-line' ? 'Route Build' : 'Station Build') : 'Inspect'}
+          {mode === 'build' ? (buildTool === 'draw-line' ? 'Draw Stops' : 'Add Stop') : 'Inspect'}
         </div>
       </header>
       <aside className="left-stack">

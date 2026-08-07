@@ -24,9 +24,9 @@ npm run build
 
 - View Pensacola on a MapLibre map.
 - Build BRT, light rail, elevated metro, or subway lines.
-- Draw loose route geometry by clicking the map.
+- Draw stops and loose route geometry by clicking the map.
 - Optionally snap BRT/light-rail route clicks to nearby OSM road corridors.
-- Drag, insert, delete, and undo route vertices.
+- Drag stops to reshape routes and undo the most recent stop or route bend.
 - Place stations on the selected line, then drag them to pull the route through a new stop location.
 - Reorder stations on a line.
 - Set peak frequency from 5 to 30 minutes.

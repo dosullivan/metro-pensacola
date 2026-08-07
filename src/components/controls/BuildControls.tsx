@@ -40,9 +40,7 @@ export function BuildControls() {
   const selectLine = useScenarioStore((state) => state.selectLine);
   const removeSelected = useScenarioStore((state) => state.removeSelected);
   const removeLastRoutePoint = useScenarioStore((state) => state.removeLastRoutePoint);
-  const removeRoutePoint = useScenarioStore((state) => state.removeRoutePoint);
-  const insertRoutePointAfter = useScenarioStore((state) => state.insertRoutePointAfter);
-  const selectRoutePoint = useScenarioStore((state) => state.selectRoutePoint);
+  const removeStation = useScenarioStore((state) => state.removeStation);
   const moveStation = useScenarioStore((state) => state.moveStation);
   const updateLineHeadway = useScenarioStore((state) => state.updateLineHeadway);
   const updateLineTechnology = useScenarioStore((state) => state.updateLineTechnology);
@@ -55,8 +53,7 @@ export function BuildControls() {
   const selectedLine = scenario.lines.find((line) => line.id === selectedLineId);
   const selectedStation = selectedLine?.stations.find((station) => station.id === selectedStationId);
   const selectedStationOrder = selectedStation ? selectedStation.order : undefined;
-  const selectedRoutePoint =
-    selectedLine && selectedRoutePointIndex !== undefined ? selectedLine.geometry[selectedRoutePointIndex] : undefined;
+  const removeLabel = selectedStation ? 'Delete Stop' : selectedRoutePointIndex !== undefined ? 'Delete Bend' : 'Remove Line';
   const snapTechnology = selectedLine?.technology ?? selectedTechnology;
   const canUseRoadSnap = snapTechnology === 'brt' || snapTechnology === 'light-rail';
   const capitalCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
@@ -116,7 +113,7 @@ export function BuildControls() {
           }}
         >
           <Route size={16} />
-          Route
+          Draw Stops
         </button>
         <button
           className={buildTool === 'place-station' ? 'active' : ''}
@@ -126,7 +123,7 @@ export function BuildControls() {
           }}
         >
           <CircleDot size={16} />
-          Station
+          Add Stop
         </button>
       </div>
 
@@ -249,10 +246,6 @@ export function BuildControls() {
               <strong>{formatMiles(calculateLineMileage(selectedLine))}</strong>
             </div>
             <div>
-              <span>Route Points</span>
-              <strong>{formatNumber(selectedLine.geometry.length)}</strong>
-            </div>
-            <div>
               <span>Capital</span>
               <strong>{formatCurrency(calculateConstructionCost(selectedLine, scenario.assumptions))}</strong>
             </div>
@@ -296,62 +289,26 @@ export function BuildControls() {
             </div>
           ) : null}
 
-          {selectedLine.geometry.length > 0 ? (
-            <div className="route-point-editor">
-              <div className="panel-title small">
-                <MapPinned size={15} />
-                <span>Route Vertices</span>
-              </div>
-              <div className="route-point-list">
-                {selectedLine.geometry.map((_, index) => (
-                  <button
-                    key={`${selectedLine.id}-${index}`}
-                    className={index === selectedRoutePointIndex ? 'route-point-chip active' : 'route-point-chip'}
-                    onClick={() => selectRoutePoint(selectedLine.id, index)}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-              {selectedRoutePoint ? (
-                <div className="route-point-actions">
-                  <small>
-                    {selectedRoutePoint[1].toFixed(5)}, {selectedRoutePoint[0].toFixed(5)}
-                  </small>
-                  <div className="button-row tight">
-                    <button
-                      className="command"
-                      onClick={() => insertRoutePointAfter(selectedLine.id, selectedRoutePointIndex as number)}
-                    >
-                      <Plus size={16} />
-                      Insert After
-                    </button>
-                    <button
-                      className="command danger"
-                      onClick={() => removeRoutePoint(selectedLine.id, selectedRoutePointIndex as number)}
-                    >
-                      <Trash2 size={16} />
-                      Delete Point
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
           <div className="button-row">
             <button
               className="command"
               disabled={selectedLine.geometry.length === 0}
-              title="Remove the most recently clicked route point. Cmd/Ctrl+Z also works in build mode."
+              title="Remove the most recently added stop or route bend. Cmd/Ctrl+Z also works in build mode."
               onClick={() => removeLastRoutePoint(selectedLine.id)}
             >
               <Undo2 size={16} />
-              Undo Last Point
+              Undo Last
             </button>
-            <button className="command danger" onClick={() => removeSelected()}>
+            <button
+              className="command danger"
+              onClick={() =>
+                selectedLine && selectedStation
+                  ? removeStation(selectedLine.id, selectedStation.id)
+                  : removeSelected()
+              }
+            >
               <Trash2 size={16} />
-              Remove
+              {removeLabel}
             </button>
           </div>
         </div>

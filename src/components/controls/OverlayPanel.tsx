@@ -1,5 +1,5 @@
 import { Layers } from 'lucide-react';
-import { useScenarioStore } from '../../store/scenarioStore';
+import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import type { OverlayKey } from '../../types';
 
 const overlayLabels: Array<[OverlayKey, string]> = [
@@ -13,7 +13,10 @@ const overlayLabels: Array<[OverlayKey, string]> = [
   ['catchments', 'Catchments']
 ];
 
+const resultOverlayKeys = new Set<OverlayKey>(['accessibility', 'ridership', 'development']);
+
 export function OverlayPanel() {
+  const scenario = useScenarioStore(selectActiveScenario);
   const overlays = useScenarioStore((state) => state.overlays);
   const toggleOverlay = useScenarioStore((state) => state.toggleOverlay);
 
@@ -24,11 +27,21 @@ export function OverlayPanel() {
         <span>Map Overlays</span>
       </div>
       <div className="toggle-grid">
-        {overlayLabels.map(([key, label]) => (
-          <button key={key} className={overlays[key] ? 'toggle active' : 'toggle'} onClick={() => toggleOverlay(key)}>
-            {label}
-          </button>
-        ))}
+        {overlayLabels.map(([key, label]) => {
+          const needsResults = resultOverlayKeys.has(key);
+          const disabled = needsResults && !scenario.results;
+          return (
+            <button
+              key={key}
+              className={overlays[key] && !disabled ? 'toggle active' : 'toggle'}
+              disabled={disabled}
+              title={disabled ? 'Run the simulation to populate this overlay.' : undefined}
+              onClick={() => toggleOverlay(key)}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

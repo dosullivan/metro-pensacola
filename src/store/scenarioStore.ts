@@ -63,18 +63,21 @@ interface ScenarioState {
   selectLine: (lineId: string) => void;
   selectRoutePoint: (lineId: string, pointIndex: number) => void;
   addRoutePoint: (coordinate: Coordinate) => void;
+  addRouteStop: (coordinate: Coordinate) => void;
   addStation: (coordinate: Coordinate) => void;
   updateRoutePointCoordinate: (lineId: string, pointIndex: number, coordinate: Coordinate) => void;
   removeRoutePoint: (lineId: string, pointIndex: number) => void;
   insertRoutePointAfter: (lineId: string, pointIndex: number) => void;
   updateStationCoordinate: (lineId: string, stationId: string, coordinate: Coordinate) => void;
   moveStation: (lineId: string, stationId: string, direction: -1 | 1) => void;
+  removeStation: (lineId: string, stationId: string) => void;
   updateLineHeadway: (lineId: string, headway: FrequencyMinutes) => void;
   updateLineTechnology: (lineId: string, technology: TransitTechnologyId) => void;
   renameLine: (lineId: string, name: string) => void;
   renameStation: (lineId: string, stationId: string, name: string) => void;
   removeLastRoutePoint: (lineId: string) => void;
   removeSelected: () => void;
+  repairGeometryOnlyLines: () => void;
   runActiveSimulation: () => void;
   toggleScenarioComparison: (scenarioId: string) => void;
 }
@@ -89,6 +92,16 @@ const defaultOverlays: Record<OverlayKey, boolean> = {
   landValue: false,
   catchments: true
 };
+
+const zoneOverlayKeys: OverlayKey[] = [
+  'population',
+  'employment',
+  'density',
+  'accessibility',
+  'ridership',
+  'development',
+  'landValue'
+];
 
 const memoryValues = new Map<string, string>();
 const memoryStorage: StateStorage = {
@@ -234,6 +247,80 @@ function withGeometryAndSnappedStations(
   };
 }
 
+function withoutStation(line: TransitLine, stationId: string): TransitLine {
+  return {
+    ...line,
+    stations: line.stations
+      .filter((station) => station.id !== stationId)
+      .map((station, order) => ({ ...station, order }))
+  };
+}
+
+function latestStationNearCoordinate(line: TransitLine, coordinate: Coordinate): string | undefined {
+  const latestStation = [...line.stations]
+    .sort((a, b) => b.order - a.order)
+    .find((station) => distanceMiles(station.coordinate, coordinate) * 5280 < 20);
+  return latestStation?.id;
+}
+
+function withLastRoutePointRemoved(line: TransitLine): TransitLine {
+  if (line.geometry.length === 0) {
+    return line;
+  }
+
+  const removedCoordinate = line.geometry[line.geometry.length - 1];
+  const stationId = latestStationNearCoordinate(line, removedCoordinate);
+  const lineWithoutRouteStop = stationId ? withoutStation(line, stationId) : line;
+  return withGeometryAndSnappedStations(lineWithoutRouteStop, line.geometry.slice(0, -1));
+}
+
+function geometryWithAddedStation(line: TransitLine, coordinate: Coordinate): Coordinate[] {
+  if (line.geometry.length === 0) {
+    return [coordinate];
+  }
+  if (line.geometry.length === 1) {
+    const existing = line.geometry[0];
+    return distanceMiles(existing, coordinate) * 5280 < 20 ? line.geometry : [existing, coordinate];
+  }
+  return line.geometry;
+}
+
+function withStationsFromRouteGeometry(line: TransitLine): TransitLine {
+  if (line.stations.length > 0 || line.geometry.length < 2) {
+    return line;
+  }
+
+  return {
+    ...line,
+    stations: line.geometry.map((coordinate, order) => ({
+      id: makeId('station'),
+      lineId: line.id,
+      name: `Station ${order + 1}`,
+      coordinate,
+      order
+    }))
+  };
+}
+
+function scenarioWithGeometryOnlyLinesRepaired(scenario: Scenario): {
+  scenario: Scenario;
+  changed: boolean;
+} {
+  let changed = false;
+  const lines = scenario.lines.map((line) => {
+    const updatedLine = withStationsFromRouteGeometry(line);
+    if (updatedLine !== line) {
+      changed = true;
+    }
+    return updatedLine;
+  });
+
+  return {
+    scenario: changed ? { ...scenario, lines, results: undefined } : scenario,
+    changed
+  };
+}
+
 export const useScenarioStore = create<ScenarioState>()(
   persist(
     (set, get) => ({
@@ -369,16 +456,29 @@ export const useScenarioStore = create<ScenarioState>()(
         ),
       toggleOverlay: (overlay) =>
         set((state) => ({
-          overlays: {
-            ...state.overlays,
-            [overlay]: !state.overlays[overlay]
-          }
+          overlays:
+            overlay === 'catchments'
+              ? {
+                  ...state.overlays,
+                  catchments: !state.overlays.catchments
+                }
+              : {
+                  ...state.overlays,
+                  ...Object.fromEntries(
+                    zoneOverlayKeys.map((key) => [key, key === overlay ? !state.overlays[overlay] : false])
+                  )
+                }
         })),
       setInspectedFeature: (feature) =>
         set({
           inspectedFeature: feature,
-          selectedLineId: feature?.type === 'line' ? feature.id : get().selectedLineId,
-          selectedStationId: feature?.type === 'station' ? feature.stationId : get().selectedStationId,
+          selectedLineId:
+            feature?.type === 'line'
+              ? feature.id
+              : feature?.type === 'station'
+                ? feature.lineId
+                : get().selectedLineId,
+          selectedStationId: feature?.type === 'station' ? feature.stationId : undefined,
           selectedRoutePointIndex: undefined
         }),
       createLine: () => {
@@ -431,17 +531,19 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           })
         ),
-      addStation: (coordinate) =>
-        set((state) =>
-          updateActiveScenario(state, (scenario) => {
+      addRouteStop: (coordinate) =>
+        set((state) => {
+          let nextLineId = state.selectedLineId;
+          let nextStationId: string | undefined;
+          const update = updateActiveScenario(state, (scenario) => {
             let selectedLineId = state.selectedLineId;
             let lines = scenario.lines;
             if (!selectedLineId || !scenario.lines.some((line) => line.id === selectedLineId)) {
               const line = createTransitLine(state, scenario);
               selectedLineId = line.id;
               lines = [...scenario.lines, line];
-              set({ selectedLineId });
             }
+            nextLineId = selectedLineId;
 
             return {
               ...scenario,
@@ -456,16 +558,80 @@ export const useScenarioStore = create<ScenarioState>()(
                   coordinate,
                   order: line.stations.length
                 };
+                nextStationId = station.id;
+                return withGeometryAndSnappedStations(
+                  {
+                    ...line,
+                    stations: [...line.stations, station]
+                  },
+                  [...line.geometry, coordinate],
+                  { stationId: station.id, coordinate }
+                );
+              }),
+              results: undefined
+            };
+          });
+
+          return {
+            ...update,
+            selectedLineId: nextLineId,
+            selectedStationId: nextStationId,
+            selectedRoutePointIndex: undefined,
+            inspectedFeature:
+              nextLineId && nextStationId
+                ? { type: 'station', lineId: nextLineId, stationId: nextStationId }
+                : state.inspectedFeature
+          };
+        }),
+      addStation: (coordinate) =>
+        set((state) => {
+          let nextLineId = state.selectedLineId;
+          let nextStationId: string | undefined;
+          const update = updateActiveScenario(state, (scenario) => {
+            let selectedLineId = state.selectedLineId;
+            let lines = scenario.lines;
+            if (!selectedLineId || !scenario.lines.some((line) => line.id === selectedLineId)) {
+              const line = createTransitLine(state, scenario);
+              selectedLineId = line.id;
+              lines = [...scenario.lines, line];
+            }
+            nextLineId = selectedLineId;
+
+            return {
+              ...scenario,
+              lines: lines.map((line) => {
+                if (line.id !== selectedLineId) {
+                  return line;
+                }
+                const station: Station = {
+                  id: makeId('station'),
+                  lineId: line.id,
+                  name: `Station ${line.stations.length + 1}`,
+                  coordinate,
+                  order: line.stations.length
+                };
+                nextStationId = station.id;
                 return {
                   ...line,
-                  geometry: line.geometry.length === 0 ? [coordinate] : line.geometry,
+                  geometry: geometryWithAddedStation(line, coordinate),
                   stations: [...line.stations, station]
                 };
               }),
               results: undefined
             };
-          })
-        ),
+          });
+
+          return {
+            ...update,
+            selectedLineId: nextLineId,
+            selectedStationId: nextStationId,
+            selectedRoutePointIndex: undefined,
+            inspectedFeature:
+              nextLineId && nextStationId
+                ? { type: 'station', lineId: nextLineId, stationId: nextStationId }
+                : state.inspectedFeature
+          };
+        }),
       updateRoutePointCoordinate: (lineId, pointIndex, coordinate) =>
         set((state) =>
           updateActiveScenario(state, (scenario) => ({
@@ -582,6 +748,18 @@ export const useScenarioStore = create<ScenarioState>()(
             results: undefined
           }))
         ),
+      removeStation: (lineId, stationId) =>
+        set((state) => ({
+          ...updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            lines: scenario.lines.map((line) => (line.id === lineId ? withoutStation(line, stationId) : line)),
+            results: undefined
+          })),
+          selectedLineId: lineId,
+          selectedStationId: undefined,
+          selectedRoutePointIndex: undefined,
+          inspectedFeature: undefined
+        })),
       updateLineHeadway: (lineId, headway) =>
         set((state) =>
           updateActiveScenario(state, (scenario) => ({
@@ -635,7 +813,7 @@ export const useScenarioStore = create<ScenarioState>()(
           updateActiveScenario(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
-              line.id === lineId ? withGeometryAndSnappedStations(line, line.geometry.slice(0, -1)) : line
+              line.id === lineId ? withLastRoutePointRemoved(line) : line
             ),
             selectedRoutePointIndex: undefined,
             results: undefined
@@ -665,14 +843,7 @@ export const useScenarioStore = create<ScenarioState>()(
               return {
                 ...scenario,
                 lines: scenario.lines.map((line) =>
-                  line.id === state.selectedLineId
-                    ? {
-                        ...line,
-                        stations: line.stations
-                          .filter((station) => station.id !== state.selectedStationId)
-                          .map((station, order) => ({ ...station, order }))
-                      }
-                    : line
+                  line.id === state.selectedLineId ? withoutStation(line, state.selectedStationId as string) : line
                 ),
                 results: undefined
               };
@@ -697,9 +868,19 @@ export const useScenarioStore = create<ScenarioState>()(
             inspectedFeature: undefined
           };
         }),
+      repairGeometryOnlyLines: () =>
+        set((state) => {
+          let didRepair = false;
+          const update = updateActiveScenario(state, (scenario) => {
+            const repaired = scenarioWithGeometryOnlyLinesRepaired(scenario);
+            didRepair = repaired.changed;
+            return repaired.scenario;
+          });
+          return didRepair ? update : {};
+        }),
       runActiveSimulation: () =>
         set((state) => {
-          const activeScenario = getActiveScenario(state);
+          const activeScenario = scenarioWithGeometryOnlyLinesRepaired(getActiveScenario(state)).scenario;
           const now = new Date().toISOString();
           const results = {
             ...runSimulation(activeScenario, PENSACOLA_ZONES),
@@ -712,7 +893,7 @@ export const useScenarioStore = create<ScenarioState>()(
 
           return {
             scenarios: state.scenarios.map((scenario) =>
-              scenario.id === activeScenario.id ? { ...scenario, results } : scenario
+              scenario.id === activeScenario.id ? { ...activeScenario, results } : scenario
             ),
             activeScenarioId: activeScenario.id,
             simulationNotice

@@ -620,40 +620,6 @@ select {
     0 10px 22px rgba(0, 0, 0, 0.44);
 }
 
-.route-point-editor {
-  margin-top: 10px;
-}
-
-.route-point-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.route-point-chip {
-  min-width: 28px;
-  height: 28px;
-  border: 1px solid rgba(244, 241, 234, 0.15);
-  color: #d8d0c3;
-  background: rgba(255, 255, 255, 0.055);
-  font-size: 11px;
-}
-
-.route-point-chip.active {
-  border-color: #facc15;
-  color: #fff5bd;
-  background: rgba(250, 204, 21, 0.14);
-}
-
-.route-point-actions {
-  margin-top: 8px;
-}
-
-.route-point-actions small {
-  color: #b9b0a3;
-  font-size: 11px;
-}
-
 .route-vertex-marker {
   width: 18px;
   height: 18px;

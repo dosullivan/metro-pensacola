@@ -248,6 +248,50 @@ describe('routing and ridership', () => {
     expect(near).toBeGreaterThan(far);
   });
 
+  it('assigns ridership to a second line that serves a useful station pair', () => {
+    const assumptions = cloneAssumptions();
+    const firstLine = testLine({ id: 'airport-line' });
+    const secondLine = testLine({
+      id: 'outer-feeder',
+      name: 'Outer Feeder',
+      geometry: [
+        [-87.31, 30.5],
+        [-87.1866, 30.4734]
+      ],
+      stations: [
+        {
+          id: 'outer-feeder-origin',
+          lineId: 'outer-feeder',
+          name: 'Outer Station',
+          coordinate: [-87.31, 30.5],
+          order: 0
+        },
+        {
+          id: 'outer-feeder-jobs',
+          lineId: 'outer-feeder',
+          name: 'Jobs Transfer',
+          coordinate: [-87.1866, 30.4734],
+          order: 1
+        }
+      ]
+    });
+    const scenario: Scenario = {
+      id: 'two-lines',
+      name: 'Two Lines',
+      lines: [firstLine, secondLine],
+      assumptions,
+      simulationYear: 0,
+      budgetLimitsEnabled: false
+    };
+
+    const result = runSimulation(scenario, testZones);
+    const firstLineResult = result.lineResults.find((line) => line.lineId === firstLine.id);
+    const secondLineResult = result.lineResults.find((line) => line.lineId === secondLine.id);
+
+    expect(firstLineResult?.weekdayRidership).toBeGreaterThan(0);
+    expect(secondLineResult?.weekdayRidership).toBeGreaterThan(0);
+  });
+
   it('decreases ridership when transit travel time is dramatically worse', () => {
     const assumptions = cloneAssumptions();
     const normalLine = testLine({ id: 'normal' });

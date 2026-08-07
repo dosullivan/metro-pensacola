@@ -21,6 +21,9 @@ const overlayPriority: OverlayKey[] = [
   'population'
 ];
 
+const minMaxOverlays = new Set<OverlayKey>(['density', 'landValue']);
+const resultOverlays = new Set<OverlayKey>(['accessibility', 'ridership', 'development']);
+
 const mapStyle: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
@@ -46,8 +49,11 @@ const mapStyle: maplibregl.StyleSpecification = {
   ]
 };
 
-function activeOverlay(overlays: Record<OverlayKey, boolean>): OverlayKey | undefined {
-  return overlayPriority.find((overlay) => overlays[overlay]);
+function activeOverlay(
+  overlays: Record<OverlayKey, boolean>,
+  results?: SimulationResults
+): OverlayKey | undefined {
+  return overlayPriority.find((overlay) => overlays[overlay] && (results || !resultOverlays.has(overlay)));
 }
 
 function zoneMetric(
@@ -76,14 +82,44 @@ function zoneMetric(
   }
 }
 
+function quantile(values: number[], percentile: number): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * percentile)));
+  return values[index];
+}
+
+function normalizeOverlayValues(values: number[], overlay: OverlayKey | undefined): number[] {
+  if (!overlay) {
+    return values.map(() => 0);
+  }
+
+  const sortedValues = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (sortedValues.length === 0) {
+    return values.map(() => 0);
+  }
+
+  const lowerBound = minMaxOverlays.has(overlay) ? sortedValues[0] : 0;
+  const percentileCap = quantile(sortedValues, 0.95);
+  const upperBound =
+    percentileCap > lowerBound ? percentileCap : sortedValues[sortedValues.length - 1];
+
+  if (upperBound <= lowerBound) {
+    return values.map((value) => (value > 0 ? 0.65 : 0));
+  }
+
+  return values.map((value) => Math.min(1, Math.max(0, (value - lowerBound) / (upperBound - lowerBound))));
+}
+
 function zoneFeatures(
   zones: SimulationZone[],
   scenario: Scenario,
   overlays: Record<OverlayKey, boolean>
 ): GeoJSON.FeatureCollection {
-  const overlay = activeOverlay(overlays);
+  const overlay = activeOverlay(overlays, scenario.results);
   const rawValues = zones.map((zone) => zoneMetric(zone, overlay, scenario.results));
-  const maxValue = Math.max(...rawValues, 1);
+  const overlayValues = normalizeOverlayValues(rawValues, overlay);
 
   return {
     type: 'FeatureCollection',
@@ -94,7 +130,7 @@ function zoneFeatures(
         name: zone.name,
         countyName: zone.countyName ?? '',
         overlay: overlay ?? 'none',
-        overlayValue: rawValues[index] / maxValue,
+        overlayValue: overlayValues[index],
         population: zone.population,
         jobs: zone.jobs
       },
@@ -149,6 +185,14 @@ function catchmentFeatures(lines: TransitLine[], enabled: boolean): GeoJSON.Feat
   );
 
   return { type: 'FeatureCollection', features };
+}
+
+function coordinatesMatch(a: Coordinate, b: Coordinate): boolean {
+  return Math.abs(a[0] - b[0]) < 0.000001 && Math.abs(a[1] - b[1]) < 0.000001;
+}
+
+function isStopCoordinate(line: TransitLine, coordinate: Coordinate): boolean {
+  return line.stations.some((station) => coordinatesMatch(station.coordinate, coordinate));
 }
 
 function setGeoJsonSource(map: LibreMap, sourceId: string, data: GeoJSON.FeatureCollection) {
@@ -276,7 +320,7 @@ export function TransitMap() {
   const selectedLineId = useScenarioStore((state) => state.selectedLineId);
   const selectedStationId = useScenarioStore((state) => state.selectedStationId);
   const selectedRoutePointIndex = useScenarioStore((state) => state.selectedRoutePointIndex);
-  const addRoutePoint = useScenarioStore((state) => state.addRoutePoint);
+  const addRouteStop = useScenarioStore((state) => state.addRouteStop);
   const addStation = useScenarioStore((state) => state.addStation);
   const selectRoutePoint = useScenarioStore((state) => state.selectRoutePoint);
   const updateRoutePointCoordinate = useScenarioStore((state) => state.updateRoutePointCoordinate);
@@ -287,7 +331,7 @@ export function TransitMap() {
   const snapTechnology = selectedLine?.technology ?? selectedTechnology;
   const canSnapRouteClicks = roadSnapEnabled && (snapTechnology === 'brt' || snapTechnology === 'light-rail');
   const snapStationToLine = (coordinate: Coordinate, line: TransitLine | undefined): Coordinate =>
-    line && line.geometry.length > 0 ? snapCoordinateToLineGeometry(coordinate, line.geometry).coordinate : coordinate;
+    line && line.geometry.length >= 2 ? snapCoordinateToLineGeometry(coordinate, line.geometry).coordinate : coordinate;
 
   const sourceData = useMemo(
     () => ({
@@ -391,7 +435,7 @@ export function TransitMap() {
             );
             coordinate = snapResult.coordinate;
           }
-          addRoutePoint(coordinate);
+          addRouteStop(coordinate);
         } else {
           addStation(snapStationToLine(coordinate, selectedLine));
         }
@@ -422,7 +466,7 @@ export function TransitMap() {
       map.off('click', handleClick);
     };
   }, [
-    addRoutePoint,
+    addRouteStop,
     addStation,
     buildTool,
     canSnapRouteClicks,
@@ -492,10 +536,14 @@ export function TransitMap() {
     }
 
     selectedLine.geometry.forEach((coordinate, index) => {
+      if (isStopCoordinate(selectedLine, coordinate)) {
+        return;
+      }
+
       const element = document.createElement('button');
       element.className = `route-vertex-marker${index === selectedRoutePointIndex ? ' is-selected' : ''}`;
       element.style.setProperty('--line-color', selectedLine.color);
-      element.title = `Route point ${index + 1}`;
+      element.title = `Route bend ${index + 1}`;
       element.type = 'button';
       element.addEventListener('click', (event) => {
         event.stopPropagation();
