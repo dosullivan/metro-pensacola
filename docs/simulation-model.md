@@ -1,0 +1,179 @@
+# Simulation Model
+
+Metro Pensacola uses a deterministic aggregate model designed for gameplay and transparency. It is plausible enough to compare scenarios, but it is not an engineering estimate or a travel-demand forecast.
+
+## Real Data vs Assumptions
+
+Real sourced data:
+
+- OpenStreetMap raster tiles provide the visible basemap.
+- Demo station coordinates are approximate anchors for real Pensacola places.
+
+Synthetic or gameplay assumptions:
+
+- Population, jobs, income, car ownership, land value, and development capacity in `src/data/pensacola/zones.ts`.
+- Transit capital costs, operating costs, speeds, transfer penalties, fares, and demand coefficients in `src/data/assumptions.ts`.
+- Development response rules.
+
+## Costs
+
+Line mileage is calculated geodesically with Turf.js:
+
+```text
+mileage = length(route polyline in miles)
+```
+
+Construction cost:
+
+```text
+capitalCost =
+  mileage * technology.capitalCostPerMile
+  + stationCount * technology.stationCost
+```
+
+Annual operating cost:
+
+```text
+operatingCost =
+  technology.baseOperatingCostPer15Miles
+  * (mileage / 15)
+  * (baseHeadwayMinutes / selectedHeadwayMinutes)
+```
+
+The base headway is 15 minutes. A 5-minute service costs about 3x the base frequency; a 30-minute service costs about 0.5x.
+
+## Catchments
+
+Each station has two catchment bands:
+
+```text
+normal walking catchment = 0.5 miles
+extended catchment = 1.0 mile
+```
+
+Zone centroids inside each band contribute their full population and jobs. This is intentionally simple and explainable.
+
+## Demand
+
+The model creates aggregate origin-destination demand between simulation zones:
+
+```text
+rawDemand(i,j) =
+  population(i) * jobs(j)
+  / max(distance(i,j), minimumDistance)^gravityDistanceExponent
+```
+
+The raw matrix is normalized to `totalDailyRegionalTrips`.
+
+## Car Time
+
+Automobile generalized time:
+
+```text
+carTime =
+  roadDistance / averageCarSpeed
+  + parkingPenalty * destinationEmploymentIntensity
+  + congestionPenalty * densityIntensity
+```
+
+Road distance is approximated as straight-line distance multiplied by a configurable circuity factor.
+
+## Transit Routing
+
+Transit routing uses Dijkstra over a station graph:
+
+- Base station nodes represent platforms or transfer points.
+- Boarding an onboard line state adds average wait time.
+- Adjacent stations on the same line are connected by in-vehicle time.
+- Stations within 400 feet receive transfer edges.
+- Transfers add a penalty, and boarding the next line adds its wait time.
+
+Transit generalized time:
+
+```text
+transitTime =
+  accessWalkTime
+  + averageWaitTime
+  + inVehicleTime
+  + transferPenalty
+  + destinationWalkTime
+```
+
+Average wait time:
+
+```text
+waitTime = headway / 2
+```
+
+## Mode Share and Ridership
+
+Transit mode share uses a logistic model:
+
+```text
+P(transit) =
+  maxTransitModeShare
+  * 1 / (1 + exp(beta * (transitTime - carTime)))
+```
+
+Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path.
+
+## System Results
+
+The simulation reports:
+
+- Construction cost
+- Annual operating cost
+- Daily and annual ridership
+- Cost per daily rider
+- Fare revenue
+- Operating subsidy
+- Average rider travel-time savings
+- Vehicle trips removed
+- CO2 reduction
+- Population and jobs within walking distance of transit
+
+Fare revenue:
+
+```text
+annualRidership * defaultFare
+```
+
+Operating subsidy:
+
+```text
+max(0, annualOperatingCost - fareRevenue)
+```
+
+## Development
+
+The long-term model supports Present Day, +5, +10, and +20 Years.
+
+For each zone:
+
+```text
+developmentPressure =
+  accessibilityScore * 0.55
+  + transitSuccess * 0.25
+  + downtownPull * 0.20
+```
+
+Growth is then limited by development capacity:
+
+```text
+growth =
+  developmentGrowthRatePerFiveYears
+  * (years / 5)
+  * developmentCapacity
+  * developmentPressure
+```
+
+The model applies this growth to population, housing units, employment, commercial square footage, and land value index.
+
+## Known Simplifications
+
+- No individual agents are simulated.
+- No road congestion assignment is performed.
+- Station catchments use centroid inclusion rather than parcel or network walking distance.
+- Transit routes do not snap to roads.
+- Operating costs are annualized gameplay assumptions.
+- The synthetic zone dataset should be replaced with ACS and LODES data before interpreting results as analysis.

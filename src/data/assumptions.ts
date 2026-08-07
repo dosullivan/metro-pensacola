@@ -1,0 +1,68 @@
+import type { SimulationAssumptions } from '../types';
+
+export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
+  technologies: {
+    brt: {
+      id: 'brt',
+      name: 'BRT',
+      capitalCostPerMile: 25_000_000,
+      stationCost: 3_000_000,
+      averageSpeedMph: 22,
+      baseOperatingCostPer15Miles: 12_000_000,
+      color: '#2dd4bf'
+    },
+    'light-rail': {
+      id: 'light-rail',
+      name: 'Light Rail',
+      capitalCostPerMile: 150_000_000,
+      stationCost: 15_000_000,
+      averageSpeedMph: 28,
+      baseOperatingCostPer15Miles: 30_000_000,
+      color: '#facc15'
+    },
+    'elevated-metro': {
+      id: 'elevated-metro',
+      name: 'Elevated Metro',
+      capitalCostPerMile: 400_000_000,
+      stationCost: 50_000_000,
+      averageSpeedMph: 38,
+      baseOperatingCostPer15Miles: 45_000_000,
+      color: '#60a5fa'
+    },
+    subway: {
+      id: 'subway',
+      name: 'Subway',
+      capitalCostPerMile: 800_000_000,
+      stationCost: 120_000_000,
+      averageSpeedMph: 42,
+      baseOperatingCostPer15Miles: 70_000_000,
+      color: '#f472b6'
+    }
+  },
+  walkCatchmentMiles: 0.5,
+  extendedCatchmentMiles: 1,
+  transferDistanceFeet: 400,
+  transferPenaltyMinutes: 6,
+  walkSpeedMph: 3,
+  defaultFare: 2,
+  capitalBudget: 3_000_000_000,
+  annualOperatingBudget: 75_000_000,
+  totalDailyRegionalTrips: 185_000,
+  gravityDistanceExponent: 1.65,
+  minimumGravityDistanceMiles: 0.75,
+  carAverageSpeedMph: 28,
+  roadCircuityFactor: 1.22,
+  congestionPenaltyMinutes: 5,
+  parkingPenaltyMinutes: 4,
+  modeChoiceBeta: 0.09,
+  maxTransitModeShare: 0.68,
+  annualizationFactor: 300,
+  vehicleTripsRemovedPerTransitTrip: 0.72,
+  co2KgPerVehicleTrip: 3.9,
+  baseHeadwayMinutes: 15,
+  developmentGrowthRatePerFiveYears: 0.055,
+  downtownCoordinate: [-87.2154, 30.412],
+  airportCoordinate: [-87.1866, 30.4734]
+};
+
+export const FREQUENCIES = [5, 10, 15, 20, 30] as const;
