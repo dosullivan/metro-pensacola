@@ -24,6 +24,12 @@ export function InspectorPanel() {
         <>
           <h3>{zone.name}</h3>
           <div className="metric-list compact">
+            {zone.countyName ? (
+              <div>
+                <span>County</span>
+                <strong>{zone.countyName.replace(' County', '')}</strong>
+              </div>
+            ) : null}
             <div>
               <span>Population</span>
               <strong>{formatNumber(zone.population + (result?.populationGrowth ?? 0))}</strong>
@@ -36,6 +42,12 @@ export function InspectorPanel() {
               <span>Density Index</span>
               <strong>{formatNumber(zone.density)}</strong>
             </div>
+            {zone.areaSqMiles ? (
+              <div>
+                <span>Area</span>
+                <strong>{formatNumber(zone.areaSqMiles, 2)} sq mi</strong>
+              </div>
+            ) : null}
             <div>
               <span>Car Ownership</span>
               <strong>{formatPercent(zone.carOwnership ?? 0)}</strong>

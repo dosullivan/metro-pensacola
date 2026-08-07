@@ -66,7 +66,16 @@ The simulation modules are independent of React and are covered by unit tests. R
 
 ## Data
 
-The visible basemap uses OpenStreetMap raster tiles through MapLibre GL JS. The zone model is a synthetic gameplay dataset in `src/data/pensacola/zones.ts`; it uses real Pensacola place anchors but is not Census or LODES data.
+The visible basemap uses OpenStreetMap raster tiles through MapLibre GL JS. The zone model in `src/data/pensacola/zones.ts` is generated from real Census block-group geometry, ACS 5-year data, and LEHD/LODES workplace jobs.
+
+Current generated dataset:
+
+- TIGERweb ACS 2024 block-group geometry.
+- ACS 2024 5-year detailed tables for population, households, housing units, median household income, and vehicle availability.
+- LEHD/LODES8 2023 WAC all-jobs workplace counts aggregated from blocks to block groups.
+- Escambia and Santa Rosa block groups whose centroids fall inside the configured Pensacola-area bounding box.
+
+The generated `landValueIndex`, `commercialSqFt`, and `developmentCapacity` fields are gameplay-derived transforms. They are not direct Census estimates.
 
 To refresh the optional OSM corridor extract:
 
@@ -76,14 +85,13 @@ python3 scripts/prepare-osm-data.py \
   --out public/data/pensacola/osm-corridors.geojson
 ```
 
-To export the current synthetic zone schema as GeoJSON:
+To refresh the ACS/LODES simulation zones:
 
 ```bash
 python3 scripts/prepare-census-data.py \
-  --out public/data/pensacola/synthetic-zones.geojson
+  --out src/data/pensacola/zones.ts \
+  --geojson-out public/data/pensacola/block-groups.geojson
 ```
-
-Actual ACS block-group and LODES job imports are documented as a future replacement path in [docs/data-sources.md](docs/data-sources.md).
 
 ## Modeling Status
 

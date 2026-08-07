@@ -23,30 +23,57 @@ This script uses the Overpass API to fetch highways, railways, and public-transp
 
 ## Simulation Zones
 
-Current MVP zones are synthetic gameplay zones in:
+Current MVP zones are real Census block groups generated into:
 
 ```text
 src/data/pensacola/zones.ts
 ```
 
-They use real place names and coordinates around Pensacola, but their demographic and employment values are not Census or LODES estimates.
+The refresh script also writes a GeoJSON copy:
 
-To export a small GeoJSON version of the synthetic schema:
+```text
+public/data/pensacola/block-groups.geojson
+```
+
+Refresh command:
 
 ```bash
 python3 scripts/prepare-census-data.py \
-  --out public/data/pensacola/synthetic-zones.geojson
+  --out src/data/pensacola/zones.ts \
+  --geojson-out public/data/pensacola/block-groups.geojson
 ```
 
-## Future Census and LODES Replacement
+The default refresh uses:
 
-A production data refresh should replace the synthetic zones with:
+- TIGERweb Tracts_Blocks MapServer layer 8, ACS 2024 Census Block Groups.
+- ACS 2024 5-year table-based Summary File detailed tables.
+- LEHD/LODES8 Florida WAC all-jobs file for 2023.
+- Escambia County and Santa Rosa County.
+- Bounding box `-87.36,30.34,-87.10,30.62`.
 
-- Census TIGER/Line block-group geometries for Escambia County and, if expanded, Santa Rosa County.
-- ACS 5-year block-group tables for population, households, income, housing units, and car ownership.
-- LEHD Origin-Destination Employment Statistics for workplace job counts.
+Primary source URLs:
 
-Suggested target schema:
+- `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/layers`
+- `https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/`
+- `https://lehd.ces.census.gov/data/lodes/LODES8/fl/wac/`
+
+The generated values include:
+
+- `population`: ACS table B01003.
+- `households`: ACS table B11001.
+- `housingUnits`: ACS table B25001.
+- `medianIncome`: ACS table B19013.
+- `carOwnership`: derived from ACS table B08201 as one minus no-vehicle households divided by households in the vehicle-availability universe.
+- `jobs`: LODES WAC `C000`, aggregated from workplace blocks to block groups.
+- `density`: population divided by Census `AREALAND`.
+
+The following fields remain gameplay-derived because they are not direct ACS/LODES estimates:
+
+- `landValueIndex`
+- `developmentCapacity`
+- `commercialSqFt`
+
+## Zone Schema
 
 ```ts
 interface SimulationZone {
@@ -65,7 +92,7 @@ interface SimulationZone {
 }
 ```
 
-The simulation code consumes this interface, so the replacement should not require changes to routing, ridership, cost, or development logic.
+The simulation code consumes this interface, so future parcel, GTFS, or local assessor inputs can replace the derived fields without changing routing, ridership, cost, or development logic.
 
 ## Demo Scenario Anchors
 

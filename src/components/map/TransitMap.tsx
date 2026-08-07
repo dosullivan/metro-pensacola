@@ -87,12 +87,13 @@ function zoneFeatures(
       properties: {
         id: zone.id,
         name: zone.name,
+        countyName: zone.countyName ?? '',
         overlay: overlay ?? 'none',
         overlayValue: rawValues[index] / maxValue,
         population: zone.population,
         jobs: zone.jobs
       },
-      geometry: {
+      geometry: zone.geometry ?? {
         type: 'Polygon',
         coordinates: [zone.polygon]
       }

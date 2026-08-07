@@ -51,6 +51,7 @@ export interface SimulationZone {
   name: string;
   centroid: Coordinate;
   polygon: Coordinate[];
+  geometry?: ZoneGeometry;
   population: number;
   households: number;
   jobs: number;
@@ -59,9 +60,23 @@ export interface SimulationZone {
   medianIncome?: number;
   housingUnits?: number;
   commercialSqFt?: number;
+  areaSqMiles?: number;
+  countyName?: string;
+  tract?: string;
+  blockGroup?: string;
   landValueIndex: number;
   developmentCapacity: number;
 }
+
+export type ZoneGeometry =
+  | {
+      type: 'Polygon';
+      coordinates: Coordinate[][];
+    }
+  | {
+      type: 'MultiPolygon';
+      coordinates: Coordinate[][][];
+    };
 
 export interface CatchmentStats {
   populationHalfMile: number;

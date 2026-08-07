@@ -8,11 +8,14 @@ Real sourced data:
 
 - OpenStreetMap raster tiles provide the visible basemap.
 - Demo station coordinates are approximate anchors for real Pensacola places.
+- Simulation zones use TIGERweb ACS 2024 block-group geometry.
+- Population, households, housing units, median household income, and vehicle availability use ACS 2024 5-year detailed tables.
+- Workplace jobs use LEHD/LODES8 2023 WAC all-jobs counts aggregated from blocks to block groups.
 
 Synthetic or gameplay assumptions:
 
-- Population, jobs, income, car ownership, land value, and development capacity in `src/data/pensacola/zones.ts`.
 - Transit capital costs, operating costs, speeds, transfer penalties, fares, and demand coefficients in `src/data/assumptions.ts`.
+- Land value index, commercial square feet, and development capacity in `src/data/pensacola/zones.ts`.
 - Development response rules.
 
 ## Costs
@@ -51,7 +54,7 @@ normal walking catchment = 0.5 miles
 extended catchment = 1.0 mile
 ```
 
-Zone centroids inside each band contribute their full population and jobs. This is intentionally simple and explainable.
+Block-group centroids inside each band contribute their full population and jobs. This is intentionally simple and explainable.
 
 ## Demand
 
@@ -173,7 +176,7 @@ The model applies this growth to population, housing units, employment, commerci
 
 - No individual agents are simulated.
 - No road congestion assignment is performed.
-- Station catchments use centroid inclusion rather than parcel or network walking distance.
+- Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
 - Transit routes do not snap to roads.
 - Operating costs are annualized gameplay assumptions.
-- The synthetic zone dataset should be replaced with ACS and LODES data before interpreting results as analysis.
+- Land value and development capacity are gameplay-derived indicators, not appraisal or parcel data.
