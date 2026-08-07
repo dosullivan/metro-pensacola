@@ -48,8 +48,9 @@ The default refresh uses:
 - TIGERweb Tracts_Blocks MapServer layer 8, ACS 2024 Census Block Groups.
 - ACS 2024 5-year table-based Summary File detailed tables.
 - LEHD/LODES8 Florida WAC all-jobs file for 2023.
-- Escambia County and Santa Rosa County.
-- Bounding box `-87.36,30.34,-87.10,30.62`.
+- All block groups in Escambia County and Santa Rosa County.
+
+The current generated dataset contains 296 block groups, 524,395 residents, 201,632 households, and 205,446 workplace jobs. Pass `--bbox west,south,east,north` only when intentionally producing a smaller clipped study area.
 
 Primary source URLs:
 

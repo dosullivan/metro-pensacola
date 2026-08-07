@@ -77,7 +77,8 @@ Current generated dataset:
 - TIGERweb ACS 2024 block-group geometry.
 - ACS 2024 5-year detailed tables for population, households, housing units, median household income, and vehicle availability.
 - LEHD/LODES8 2023 WAC all-jobs workplace counts aggregated from blocks to block groups.
-- Escambia and Santa Rosa block groups whose centroids fall inside the configured Pensacola-area bounding box.
+- All Escambia County and Santa Rosa County block groups.
+- Current generated coverage: 296 block groups, 524,395 residents, and 205,446 workplace jobs.
 
 The generated `landValueIndex`, `commercialSqFt`, and `developmentCapacity` fields are gameplay-derived transforms. They are not direct Census estimates.
 
@@ -96,6 +97,8 @@ python3 scripts/prepare-census-data.py \
   --out src/data/pensacola/zones.ts \
   --geojson-out public/data/pensacola/block-groups.geojson
 ```
+
+Pass `--bbox west,south,east,north` only when you intentionally want a smaller clipped study area.
 
 ## Modeling Status
 

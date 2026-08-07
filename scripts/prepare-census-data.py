@@ -31,7 +31,6 @@ DEFAULT_COUNTIES = {
     "033": "Escambia County",
     "113": "Santa Rosa County",
 }
-DEFAULT_BBOX = "-87.36,30.34,-87.10,30.62"
 TIGERWEB_LAYER = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/8/query"
 ACS_TABLE_BASE = "https://www2.census.gov/programs-surveys/acs/summary_file/{year}/table-based-SF/data/5YRData/acsdt5y{year}-{table}.dat"
 LODES_WAC_URL = "https://lehd.ces.census.gov/data/lodes/LODES8/fl/wac/fl_wac_S000_JT00_{year}.csv.gz"
@@ -137,7 +136,7 @@ def round_geometry_coordinates(coordinates: Any) -> Any:
 
 def fetch_block_group_geometries(
     counties: dict[str, str],
-    bbox: tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float] | None,
 ) -> dict[str, GeometryRecord]:
     records: dict[str, GeometryRecord] = {}
     for county_fips, county_name in counties.items():
@@ -154,7 +153,7 @@ def fetch_block_group_geometries(
             geometry = feature["geometry"]
             primary_ring = primary_exterior_ring(geometry)
             centroid = ring_centroid(primary_ring)
-            if not in_bbox(centroid, bbox):
+            if bbox and not in_bbox(centroid, bbox):
                 continue
             geoid = str(properties["GEOID"])
             rounded_geometry = {
@@ -320,7 +319,7 @@ def write_typescript(
     acs_year: int,
     lodes_year: int,
     counties: dict[str, str],
-    bbox: tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float] | None,
 ) -> None:
     total_population = sum(zone["population"] for zone in zones)
     total_households = sum(zone["households"] for zone in zones)
@@ -334,12 +333,16 @@ def write_typescript(
         "lodesYear": lodes_year,
         "tigerwebLayer": "TIGERweb Tracts_Blocks MapServer layer 8, ACS 2024 Census Block Groups",
         "counties": counties,
-        "bbox": {
-            "west": bbox[0],
-            "south": bbox[1],
-            "east": bbox[2],
-            "north": bbox[3],
-        },
+        "bbox": (
+            {
+                "west": bbox[0],
+                "south": bbox[1],
+                "east": bbox[2],
+                "north": bbox[3],
+            }
+            if bbox
+            else None
+        ),
         "notes": [
             "Population, households, housing units, median income, and vehicle availability come from ACS 5-year detailed tables.",
             "Jobs are LEHD LODES8 WAC all-jobs workplace counts aggregated from blocks to block groups.",
@@ -384,7 +387,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--acs-year", type=int, default=2024)
     parser.add_argument("--lodes-year", type=int, default=2023)
-    parser.add_argument("--bbox", default=DEFAULT_BBOX, help="west,south,east,north")
+    parser.add_argument(
+        "--bbox",
+        default=None,
+        help="Optional west,south,east,north clip. Omit to include every block group in the selected counties.",
+    )
     parser.add_argument(
         "--counties",
         default="033,113",
@@ -396,11 +403,11 @@ def main() -> None:
 
     county_codes = [county.strip() for county in args.counties.split(",") if county.strip()]
     counties = {code: DEFAULT_COUNTIES.get(code, f"County {code}") for code in county_codes}
-    bbox = parse_bbox(args.bbox)
+    bbox = parse_bbox(args.bbox) if args.bbox else None
 
     geometries = fetch_block_group_geometries(counties, bbox)
     if not geometries:
-        raise SystemExit("No block groups matched the requested counties and bbox.")
+        raise SystemExit("No block groups matched the requested county/bbox filters.")
 
     acs = fetch_acs_tables(args.acs_year, set(geometries))
     jobs = fetch_lodes_jobs(args.lodes_year, set(geometries))
