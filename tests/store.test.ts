@@ -275,6 +275,30 @@ describe('scenario store simulation action', () => {
     expect(line.stations.map((station) => station.coordinate)).toEqual(line.geometry);
   });
 
+  it('keeps road-following geometry when a route stop is added with an OSM path segment', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    useScenarioStore.getState().addRouteStop([-87.18, 30.46], [
+      [-87.22, 30.42],
+      [-87.2, 30.42],
+      [-87.2, 30.46],
+      [-87.18, 30.46]
+    ]);
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines[0];
+    expect(line.geometry).toEqual([
+      [-87.22, 30.42],
+      [-87.2, 30.42],
+      [-87.2, 30.46],
+      [-87.18, 30.46]
+    ]);
+    expect(line.stations).toHaveLength(2);
+    expect(line.stations[1].coordinate).toEqual([-87.18, 30.46]);
+  });
+
   it('undoes the station created by the last route-mode click', () => {
     const scenario = cloneScenario(DEMO_SCENARIO);
     scenario.lines = [];

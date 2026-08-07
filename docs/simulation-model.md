@@ -177,7 +177,7 @@ The model applies this growth to population, housing units, employment, commerci
 - No individual agents are simulated.
 - No road congestion assignment is performed.
 - Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
-- Road snapping moves BRT/light-rail route vertices to nearby OSM highway geometries, but route segments are still direct lines between edited vertices.
+- Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.
 - Operating costs are annualized gameplay assumptions.
 - Land value and development capacity are gameplay-derived indicators, not appraisal or parcel data.

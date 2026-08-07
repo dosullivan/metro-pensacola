@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl, { Map as LibreMap, Marker } from 'maplibre-gl';
 import { circle } from '@turf/turf';
 import { PENSACOLA_CENTER } from '../../data/pensacola/bounds';
 import { PENSACOLA_ZONES } from '../../data/pensacola/zones';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import {
+  buildRoadNetwork,
+  roadPathBetweenCoordinates,
   snapCoordinateToLineGeometry,
+  snapCoordinateToRoadNetwork,
   snapCoordinateToRoadCorridors,
   type CorridorCollection
 } from '../../simulation/snapping';
@@ -187,14 +190,6 @@ function catchmentFeatures(lines: TransitLine[], enabled: boolean): GeoJSON.Feat
   return { type: 'FeatureCollection', features };
 }
 
-function coordinatesMatch(a: Coordinate, b: Coordinate): boolean {
-  return Math.abs(a[0] - b[0]) < 0.000001 && Math.abs(a[1] - b[1]) < 0.000001;
-}
-
-function isStopCoordinate(line: TransitLine, coordinate: Coordinate): boolean {
-  return line.stations.some((station) => coordinatesMatch(station.coordinate, coordinate));
-}
-
 function setGeoJsonSource(map: LibreMap, sourceId: string, data: GeoJSON.FeatureCollection) {
   const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
   if (source) {
@@ -308,7 +303,6 @@ export function TransitMap() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const markersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
-  const routeVertexMarkersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
   const [osmCorridors, setOsmCorridors] = useState<CorridorCollection | undefined>();
 
   const scenario = useScenarioStore(selectActiveScenario);
@@ -319,17 +313,52 @@ export function TransitMap() {
   const overlays = useScenarioStore((state) => state.overlays);
   const selectedLineId = useScenarioStore((state) => state.selectedLineId);
   const selectedStationId = useScenarioStore((state) => state.selectedStationId);
-  const selectedRoutePointIndex = useScenarioStore((state) => state.selectedRoutePointIndex);
   const addRouteStop = useScenarioStore((state) => state.addRouteStop);
   const addStation = useScenarioStore((state) => state.addStation);
-  const selectRoutePoint = useScenarioStore((state) => state.selectRoutePoint);
-  const updateRoutePointCoordinate = useScenarioStore((state) => state.updateRoutePointCoordinate);
   const updateStationCoordinate = useScenarioStore((state) => state.updateStationCoordinate);
   const selectLine = useScenarioStore((state) => state.selectLine);
   const setInspectedFeature = useScenarioStore((state) => state.setInspectedFeature);
   const selectedLine = scenario.lines.find((line) => line.id === selectedLineId);
-  const snapTechnology = selectedLine?.technology ?? selectedTechnology;
-  const canSnapRouteClicks = roadSnapEnabled && (snapTechnology === 'brt' || snapTechnology === 'light-rail');
+  const roadNetwork = useMemo(() => buildRoadNetwork(osmCorridors), [osmCorridors]);
+  const canUseRoadSnap = useCallback(
+    (line: TransitLine | undefined = selectedLine): boolean => {
+      const technology = line?.technology ?? selectedTechnology;
+      return roadSnapEnabled && (technology === 'brt' || technology === 'light-rail');
+    },
+    [roadSnapEnabled, selectedLine, selectedTechnology]
+  );
+  const snapToRoadIfEnabled = useCallback(
+    (coordinate: Coordinate, line: TransitLine | undefined = selectedLine): Coordinate => {
+      if (!canUseRoadSnap(line)) {
+        return coordinate;
+      }
+      const maxDistanceFeet = scenario.assumptions.roadSnapDistanceFeet ?? 650;
+      const networkSnap = snapCoordinateToRoadNetwork(coordinate, roadNetwork, maxDistanceFeet);
+      return networkSnap.snapped
+        ? networkSnap.coordinate
+        : snapCoordinateToRoadCorridors(coordinate, osmCorridors, maxDistanceFeet).coordinate;
+    },
+    [
+      canUseRoadSnap,
+      roadNetwork,
+      scenario.assumptions.roadSnapDistanceFeet,
+      osmCorridors
+    ]
+  );
+  const roadPathIfEnabled = useCallback(
+    (start: Coordinate | undefined, end: Coordinate, line: TransitLine | undefined = selectedLine): Coordinate[] | undefined => {
+      if (!start || !canUseRoadSnap(line)) {
+        return undefined;
+      }
+      return roadPathBetweenCoordinates(
+        start,
+        end,
+        roadNetwork,
+        scenario.assumptions.roadSnapDistanceFeet ?? 650
+      );
+    },
+    [canUseRoadSnap, roadNetwork, scenario.assumptions.roadSnapDistanceFeet, selectedLine]
+  );
   const snapStationToLine = (coordinate: Coordinate, line: TransitLine | undefined): Coordinate =>
     line && line.geometry.length >= 2 ? snapCoordinateToLineGeometry(coordinate, line.geometry).coordinate : coordinate;
 
@@ -398,8 +427,6 @@ export function TransitMap() {
     return () => {
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current.clear();
-      routeVertexMarkersRef.current.forEach((marker) => marker.remove());
-      routeVertexMarkersRef.current.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -427,17 +454,12 @@ export function TransitMap() {
       let coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
       if (mode === 'build') {
         if (buildTool === 'draw-line') {
-          if (canSnapRouteClicks) {
-            const snapResult = snapCoordinateToRoadCorridors(
-              coordinate,
-              osmCorridors,
-              scenario.assumptions.roadSnapDistanceFeet ?? 650
-            );
-            coordinate = snapResult.coordinate;
-          }
-          addRouteStop(coordinate);
+          const snappedCoordinate = snapToRoadIfEnabled(coordinate);
+          const previousCoordinate = selectedLine?.geometry[selectedLine.geometry.length - 1];
+          addRouteStop(snappedCoordinate, roadPathIfEnabled(previousCoordinate, snappedCoordinate));
         } else {
-          addStation(snapStationToLine(coordinate, selectedLine));
+          const roadSnappedCoordinate = snapToRoadIfEnabled(coordinate);
+          addStation(snapStationToLine(roadSnappedCoordinate, selectedLine));
         }
         return;
       }
@@ -469,12 +491,11 @@ export function TransitMap() {
     addRouteStop,
     addStation,
     buildTool,
-    canSnapRouteClicks,
     mode,
-    osmCorridors,
-    scenario.assumptions.roadSnapDistanceFeet,
     selectLine,
     selectedLine,
+    roadPathIfEnabled,
+    snapToRoadIfEnabled,
     setInspectedFeature
   ]);
 
@@ -513,59 +534,23 @@ export function TransitMap() {
           .addTo(map);
         marker.on('dragend', () => {
           const lngLat = marker.getLngLat();
-          const coordinate: Coordinate = [lngLat.lng, lngLat.lat];
+          const coordinate = snapToRoadIfEnabled([lngLat.lng, lngLat.lat], line);
           marker.setLngLat(coordinate);
           updateStationCoordinate(line.id, station.id, coordinate);
         });
         markersRef.current.set(station.id, marker);
       }
     }
-  }, [mode, scenario.lines, selectedLineId, selectedStationId, selectLine, setInspectedFeature, updateStationCoordinate]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) {
-      return;
-    }
-
-    routeVertexMarkersRef.current.forEach((marker) => marker.remove());
-    routeVertexMarkersRef.current.clear();
-
-    if (!selectedLine) {
-      return;
-    }
-
-    selectedLine.geometry.forEach((coordinate, index) => {
-      if (isStopCoordinate(selectedLine, coordinate)) {
-        return;
-      }
-
-      const element = document.createElement('button');
-      element.className = `route-vertex-marker${index === selectedRoutePointIndex ? ' is-selected' : ''}`;
-      element.style.setProperty('--line-color', selectedLine.color);
-      element.title = `Route bend ${index + 1}`;
-      element.type = 'button';
-      element.addEventListener('click', (event) => {
-        event.stopPropagation();
-        selectRoutePoint(selectedLine.id, index);
-      });
-
-      const marker = new maplibregl.Marker({ element, draggable: true })
-        .setLngLat(coordinate)
-        .addTo(map);
-      marker.on('dragend', () => {
-        const lngLat = marker.getLngLat();
-        updateRoutePointCoordinate(selectedLine.id, index, [lngLat.lng, lngLat.lat]);
-      });
-      routeVertexMarkersRef.current.set(`${selectedLine.id}-${index}`, marker);
-    });
   }, [
-    selectedLine,
-    selectedRoutePointIndex,
-    selectRoutePoint,
-    updateRoutePointCoordinate
+    mode,
+    scenario.lines,
+    selectedLineId,
+    selectedStationId,
+    selectLine,
+    setInspectedFeature,
+    snapToRoadIfEnabled,
+    updateStationCoordinate
   ]);
-
   return (
     <div className="map-shell">
       <div ref={containerRef} className="map-container" />

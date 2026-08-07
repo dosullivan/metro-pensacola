@@ -63,7 +63,7 @@ interface ScenarioState {
   selectLine: (lineId: string) => void;
   selectRoutePoint: (lineId: string, pointIndex: number) => void;
   addRoutePoint: (coordinate: Coordinate) => void;
-  addRouteStop: (coordinate: Coordinate) => void;
+  addRouteStop: (coordinate: Coordinate, geometrySegment?: Coordinate[]) => void;
   addStation: (coordinate: Coordinate) => void;
   updateRoutePointCoordinate: (lineId: string, pointIndex: number, coordinate: Coordinate) => void;
   removeRoutePoint: (lineId: string, pointIndex: number) => void;
@@ -283,6 +283,26 @@ function geometryWithAddedStation(line: TransitLine, coordinate: Coordinate): Co
     return distanceMiles(existing, coordinate) * 5280 < 20 ? line.geometry : [existing, coordinate];
   }
   return line.geometry;
+}
+
+function geometryWithAddedRouteStop(
+  line: TransitLine,
+  coordinate: Coordinate,
+  geometrySegment: Coordinate[] | undefined
+): Coordinate[] {
+  if (line.geometry.length === 0) {
+    return [coordinate];
+  }
+
+  if (!geometrySegment || geometrySegment.length < 2) {
+    return [...line.geometry, coordinate];
+  }
+
+  const lastPoint = line.geometry[line.geometry.length - 1];
+  const startsAtCurrentEnd =
+    Math.abs(geometrySegment[0][0] - lastPoint[0]) < 0.000001 &&
+    Math.abs(geometrySegment[0][1] - lastPoint[1]) < 0.000001;
+  return [...line.geometry, ...(startsAtCurrentEnd ? geometrySegment.slice(1) : geometrySegment)];
 }
 
 function withStationsFromRouteGeometry(line: TransitLine): TransitLine {
@@ -531,7 +551,7 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           })
         ),
-      addRouteStop: (coordinate) =>
+      addRouteStop: (coordinate, geometrySegment) =>
         set((state) => {
           let nextLineId = state.selectedLineId;
           let nextStationId: string | undefined;
@@ -564,7 +584,7 @@ export const useScenarioStore = create<ScenarioState>()(
                     ...line,
                     stations: [...line.stations, station]
                   },
-                  [...line.geometry, coordinate],
+                  geometryWithAddedRouteStop(line, coordinate, geometrySegment),
                   { stationId: station.id, coordinate }
                 );
               }),

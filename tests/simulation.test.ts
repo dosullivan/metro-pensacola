@@ -10,6 +10,8 @@ import { estimateNetworkRidership } from '../src/simulation/ridership';
 import { fastestTransitPath } from '../src/simulation/routing';
 import { runSimulation } from '../src/simulation/runSimulation';
 import {
+  buildRoadNetwork,
+  roadPathBetweenCoordinates,
   snapCoordinateToLineGeometry,
   snapCoordinateToRoadCorridors,
   type CorridorCollection
@@ -171,6 +173,43 @@ describe('simulation primitives', () => {
     const unsnapped = snapCoordinateToRoadCorridors([-87.22, 30.45], corridors, 100);
     expect(unsnapped.snapped).toBe(false);
     expect(unsnapped.coordinate).toEqual([-87.22, 30.45]);
+  });
+
+  it('builds a road-following path between snapped route stops', () => {
+    const corridors: CorridorCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { highway: 'primary', name: 'North South Road' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-87.2, 30.4],
+              [-87.2, 30.45]
+            ]
+          }
+        },
+        {
+          type: 'Feature',
+          properties: { highway: 'primary', name: 'East West Road' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-87.2, 30.45],
+              [-87.15, 30.45]
+            ]
+          }
+        }
+      ]
+    };
+    const network = buildRoadNetwork(corridors);
+    const path = roadPathBetweenCoordinates([-87.201, 30.401], [-87.151, 30.449], network, 800);
+
+    expect(path).toBeDefined();
+    expect(path?.[0][0]).toBeCloseTo(-87.2, 4);
+    expect(path).toContainEqual([-87.2, 30.45]);
+    expect(path?.[path.length - 1]?.[1]).toBeCloseTo(30.45, 4);
   });
 
   it('snaps station coordinates onto the selected transit line geometry', () => {

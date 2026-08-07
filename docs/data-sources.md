@@ -19,7 +19,7 @@ python3 scripts/prepare-osm-data.py \
   --out public/data/pensacola/osm-corridors.geojson
 ```
 
-This script uses the Overpass API to fetch OSM highway ways in the Pensacola area. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves each clicked route vertex to the nearest OSM highway within the configured snap distance; it does not yet calculate a shortest path along the street network between vertices.
+This script uses the Overpass API to fetch OSM highway ways in the Pensacola area. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves stops to the nearest OSM highway within the configured snap distance and draws route geometry between consecutive stops along the extracted road network when a connected path is available.
 
 ## Simulation Zones
 
