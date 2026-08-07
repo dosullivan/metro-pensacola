@@ -4,7 +4,8 @@ import { DEFAULT_ASSUMPTIONS } from '../data/assumptions';
 import { DEMO_SCENARIO } from '../data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../data/pensacola/zones';
 import { runSimulation } from '../simulation/runSimulation';
-import { makeId } from '../simulation/geo';
+import { distanceMiles, makeId } from '../simulation/geo';
+import { snapCoordinateToLineGeometry } from '../simulation/snapping';
 import type {
   AppMode,
   BuildTool,
@@ -24,13 +25,17 @@ export type InspectedFeature =
   | { type: 'station'; lineId: string; stationId: string }
   | undefined;
 
+const STATION_VERTEX_PULL_DISTANCE_FEET = 150;
+
 interface ScenarioState {
   scenarios: Scenario[];
   activeScenarioId: string;
   selectedLineId?: string;
   selectedStationId?: string;
+  selectedRoutePointIndex?: number;
   mode: AppMode;
   buildTool: BuildTool;
+  roadSnapEnabled: boolean;
   selectedTechnology: TransitTechnologyId;
   selectedHeadway: FrequencyMinutes;
   overlays: Record<OverlayKey, boolean>;
@@ -40,6 +45,7 @@ interface ScenarioState {
   simulationNotice?: string;
   setMode: (mode: AppMode) => void;
   setBuildTool: (buildTool: BuildTool) => void;
+  setRoadSnapEnabled: (enabled: boolean) => void;
   setSelectedTechnology: (technology: TransitTechnologyId) => void;
   setSelectedHeadway: (headway: FrequencyMinutes) => void;
   setActiveScenario: (scenarioId: string) => void;
@@ -55,9 +61,14 @@ interface ScenarioState {
   setInspectedFeature: (feature: InspectedFeature) => void;
   createLine: () => string;
   selectLine: (lineId: string) => void;
+  selectRoutePoint: (lineId: string, pointIndex: number) => void;
   addRoutePoint: (coordinate: Coordinate) => void;
   addStation: (coordinate: Coordinate) => void;
+  updateRoutePointCoordinate: (lineId: string, pointIndex: number, coordinate: Coordinate) => void;
+  removeRoutePoint: (lineId: string, pointIndex: number) => void;
+  insertRoutePointAfter: (lineId: string, pointIndex: number) => void;
   updateStationCoordinate: (lineId: string, stationId: string, coordinate: Coordinate) => void;
+  moveStation: (lineId: string, stationId: string, direction: -1 | 1) => void;
   updateLineHeadway: (lineId: string, headway: FrequencyMinutes) => void;
   updateLineTechnology: (lineId: string, technology: TransitTechnologyId) => void;
   renameLine: (lineId: string, name: string) => void;
@@ -148,6 +159,81 @@ function createTransitLine(state: ScenarioState, scenario: Scenario): TransitLin
   };
 }
 
+function closestRouteVertexIndex(geometry: Coordinate[], coordinate: Coordinate): number | undefined {
+  if (geometry.length === 0) {
+    return undefined;
+  }
+
+  let closestIndex = 0;
+  let closestDistanceFeet = Number.POSITIVE_INFINITY;
+  geometry.forEach((point, index) => {
+    const distanceFeet = distanceMiles(point, coordinate) * 5280;
+    if (distanceFeet < closestDistanceFeet) {
+      closestDistanceFeet = distanceFeet;
+      closestIndex = index;
+    }
+  });
+
+  return closestDistanceFeet <= STATION_VERTEX_PULL_DISTANCE_FEET ? closestIndex : undefined;
+}
+
+function geometryPulledByStation(
+  line: TransitLine,
+  station: Station,
+  coordinate: Coordinate
+): Coordinate[] {
+  if (line.geometry.length <= 1) {
+    return [coordinate];
+  }
+
+  const vertexIndex = closestRouteVertexIndex(line.geometry, station.coordinate);
+  if (vertexIndex !== undefined) {
+    return line.geometry.map((point, index) => (index === vertexIndex ? coordinate : point));
+  }
+
+  const snapResult = snapCoordinateToLineGeometry(station.coordinate, line.geometry);
+  const insertIndex =
+    snapResult.segmentStartIndex !== undefined
+      ? snapResult.segmentStartIndex + 1
+      : line.geometry.length;
+
+  return [
+    ...line.geometry.slice(0, insertIndex),
+    coordinate,
+    ...line.geometry.slice(insertIndex)
+  ];
+}
+
+function withGeometryAndSnappedStations(
+  line: TransitLine,
+  geometry: Coordinate[],
+  pinnedStation?: { stationId: string; coordinate: Coordinate }
+): TransitLine {
+  if (geometry.length === 0) {
+    return {
+      ...line,
+      geometry,
+      stations: line.stations.map((station) =>
+        station.id === pinnedStation?.stationId
+          ? { ...station, coordinate: pinnedStation.coordinate }
+          : station
+      )
+    };
+  }
+
+  return {
+    ...line,
+    geometry,
+    stations: line.stations.map((station) => ({
+      ...station,
+      coordinate:
+        station.id === pinnedStation?.stationId
+          ? pinnedStation.coordinate
+          : snapCoordinateToLineGeometry(station.coordinate, geometry).coordinate
+    }))
+  };
+}
+
 export const useScenarioStore = create<ScenarioState>()(
   persist(
     (set, get) => ({
@@ -155,8 +241,10 @@ export const useScenarioStore = create<ScenarioState>()(
       activeScenarioId: DEMO_SCENARIO.id,
       selectedLineId: DEMO_SCENARIO.lines[0]?.id,
       selectedStationId: undefined,
+      selectedRoutePointIndex: undefined,
       mode: 'inspect',
       buildTool: 'draw-line',
+      roadSnapEnabled: false,
       selectedTechnology: 'brt',
       selectedHeadway: 10,
       overlays: defaultOverlays,
@@ -165,6 +253,7 @@ export const useScenarioStore = create<ScenarioState>()(
       simulationNotice: undefined,
       setMode: (mode) => set({ mode, inspectedFeature: undefined }),
       setBuildTool: (buildTool) => set({ buildTool }),
+      setRoadSnapEnabled: (enabled) => set({ roadSnapEnabled: enabled }),
       setSelectedTechnology: (technology) => set({ selectedTechnology: technology }),
       setSelectedHeadway: (headway) => set({ selectedHeadway: headway }),
       setActiveScenario: (scenarioId) =>
@@ -175,6 +264,7 @@ export const useScenarioStore = create<ScenarioState>()(
                 activeScenarioId: scenario.id,
                 selectedLineId: scenario.lines[0]?.id,
                 selectedStationId: undefined,
+                selectedRoutePointIndex: undefined,
                 inspectedFeature: undefined
               }
             : {};
@@ -187,6 +277,7 @@ export const useScenarioStore = create<ScenarioState>()(
             activeScenarioId: scenario.id,
             selectedLineId: undefined,
             selectedStationId: undefined,
+            selectedRoutePointIndex: undefined,
             mode: 'build'
           };
         }),
@@ -216,7 +307,8 @@ export const useScenarioStore = create<ScenarioState>()(
             scenarios: [...state.scenarios, copy],
             activeScenarioId: copy.id,
             selectedLineId: copy.lines[0]?.id,
-            selectedStationId: undefined
+            selectedStationId: undefined,
+            selectedRoutePointIndex: undefined
           };
         }),
       deleteScenario: (scenarioId) =>
@@ -230,6 +322,7 @@ export const useScenarioStore = create<ScenarioState>()(
           return {
             scenarios,
             activeScenarioId,
+            selectedRoutePointIndex: undefined,
             compareScenarioIds: state.compareScenarioIds.filter((id) => id !== scenarioId)
           };
         }),
@@ -244,6 +337,7 @@ export const useScenarioStore = create<ScenarioState>()(
             activeScenarioId: demo.id,
             selectedLineId: demo.lines[0]?.id,
             selectedStationId: undefined,
+            selectedRoutePointIndex: undefined,
             inspectedFeature: undefined,
             compareScenarioIds: state.compareScenarioIds.includes(demo.id)
               ? state.compareScenarioIds
@@ -284,7 +378,8 @@ export const useScenarioStore = create<ScenarioState>()(
         set({
           inspectedFeature: feature,
           selectedLineId: feature?.type === 'line' ? feature.id : get().selectedLineId,
-          selectedStationId: feature?.type === 'station' ? feature.stationId : get().selectedStationId
+          selectedStationId: feature?.type === 'station' ? feature.stationId : get().selectedStationId,
+          selectedRoutePointIndex: undefined
         }),
       createLine: () => {
         let createdLineId = '';
@@ -299,10 +394,23 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           })
         );
-        set({ selectedLineId: createdLineId, selectedStationId: undefined, mode: 'build' });
+        set({
+          selectedLineId: createdLineId,
+          selectedStationId: undefined,
+          selectedRoutePointIndex: undefined,
+          mode: 'build'
+        });
         return createdLineId;
       },
-      selectLine: (lineId) => set({ selectedLineId: lineId, selectedStationId: undefined }),
+      selectLine: (lineId) =>
+        set({ selectedLineId: lineId, selectedStationId: undefined, selectedRoutePointIndex: undefined }),
+      selectRoutePoint: (lineId, pointIndex) =>
+        set({
+          selectedLineId: lineId,
+          selectedStationId: undefined,
+          selectedRoutePointIndex: pointIndex,
+          inspectedFeature: { type: 'line', id: lineId }
+        }),
       addRoutePoint: (coordinate) =>
         set((state) =>
           updateActiveScenario(state, (scenario) => {
@@ -317,7 +425,7 @@ export const useScenarioStore = create<ScenarioState>()(
             return {
               ...scenario,
               lines: lines.map((line) =>
-                line.id === selectedLineId ? { ...line, geometry: [...line.geometry, coordinate] } : line
+                line.id === selectedLineId ? withGeometryAndSnappedStations(line, [...line.geometry, coordinate]) : line
               ),
               results: undefined
             };
@@ -358,20 +466,119 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           })
         ),
-      updateStationCoordinate: (lineId, stationId, coordinate) =>
+      updateRoutePointCoordinate: (lineId, pointIndex, coordinate) =>
         set((state) =>
           updateActiveScenario(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
               line.id === lineId
-                ? {
-                    ...line,
-                    stations: line.stations.map((station) =>
-                      station.id === stationId ? { ...station, coordinate } : station
-                    )
-                  }
+                ? withGeometryAndSnappedStations(
+                    line,
+                    line.geometry.map((point, index) => (index === pointIndex ? coordinate : point))
+                  )
                 : line
             ),
+            results: undefined
+          }))
+        ),
+      removeRoutePoint: (lineId, pointIndex) =>
+        set((state) =>
+          updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            lines: scenario.lines.map((line) =>
+              line.id === lineId
+                ? withGeometryAndSnappedStations(
+                    line,
+                    line.geometry.filter((_, index) => index !== pointIndex)
+                  )
+                : line
+            ),
+            selectedRoutePointIndex: undefined,
+            results: undefined
+          }))
+        ),
+      insertRoutePointAfter: (lineId, pointIndex) =>
+        set((state) =>
+          updateActiveScenario(state, (scenario) => {
+            let insertedIndex: number | undefined;
+            return {
+              ...scenario,
+              lines: scenario.lines.map((line) => {
+                if (line.id !== lineId || line.geometry.length === 0) {
+                  return line;
+                }
+                const current = line.geometry[Math.min(pointIndex, line.geometry.length - 1)];
+                const next = line.geometry[pointIndex + 1];
+                const inserted: Coordinate = next
+                  ? [(current[0] + next[0]) / 2, (current[1] + next[1]) / 2]
+                  : [current[0] + 0.002, current[1] + 0.002];
+                insertedIndex = Math.min(pointIndex + 1, line.geometry.length);
+                return withGeometryAndSnappedStations(
+                  line,
+                  [
+                    ...line.geometry.slice(0, insertedIndex),
+                    inserted,
+                    ...line.geometry.slice(insertedIndex)
+                  ]
+                );
+              }),
+              selectedLineId: lineId,
+              selectedStationId: undefined,
+              selectedRoutePointIndex: insertedIndex,
+              results: undefined
+            };
+          })
+        ),
+      updateStationCoordinate: (lineId, stationId, coordinate) =>
+        set((state) => ({
+          ...updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            lines: scenario.lines.map((line) => {
+              if (line.id !== lineId) {
+                return line;
+              }
+
+              const station = line.stations.find((candidate) => candidate.id === stationId);
+              if (!station) {
+                return line;
+              }
+
+              return withGeometryAndSnappedStations(
+                line,
+                geometryPulledByStation(line, station, coordinate),
+                { stationId, coordinate }
+              );
+            }),
+            results: undefined
+          })),
+          selectedLineId: lineId,
+          selectedStationId: stationId,
+          selectedRoutePointIndex: undefined,
+          inspectedFeature: { type: 'station', lineId, stationId }
+        })),
+      moveStation: (lineId, stationId, direction) =>
+        set((state) =>
+          updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            lines: scenario.lines.map((line) => {
+              if (line.id !== lineId) {
+                return line;
+              }
+              const stations = [...line.stations].sort((a, b) => a.order - b.order);
+              const fromIndex = stations.findIndex((station) => station.id === stationId);
+              const toIndex = fromIndex + direction;
+              if (fromIndex < 0 || toIndex < 0 || toIndex >= stations.length) {
+                return line;
+              }
+              const [station] = stations.splice(fromIndex, 1);
+              stations.splice(toIndex, 0, station);
+              return {
+                ...line,
+                stations: stations.map((candidate, order) => ({ ...candidate, order }))
+              };
+            }),
+            selectedStationId: stationId,
+            selectedRoutePointIndex: undefined,
             results: undefined
           }))
         ),
@@ -428,8 +635,9 @@ export const useScenarioStore = create<ScenarioState>()(
           updateActiveScenario(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
-              line.id === lineId ? { ...line, geometry: line.geometry.slice(0, -1) } : line
+              line.id === lineId ? withGeometryAndSnappedStations(line, line.geometry.slice(0, -1)) : line
             ),
+            selectedRoutePointIndex: undefined,
             results: undefined
           }))
         ),
@@ -437,7 +645,22 @@ export const useScenarioStore = create<ScenarioState>()(
         set((state) => {
           const selectedStationId = state.selectedStationId;
           const selectedLineId = state.selectedLineId;
+          const selectedRoutePointIndex = state.selectedRoutePointIndex;
           const update = updateActiveScenario(state, (scenario) => {
+            if (selectedLineId && selectedRoutePointIndex !== undefined) {
+              return {
+                ...scenario,
+                lines: scenario.lines.map((line) =>
+                  line.id === selectedLineId
+                    ? withGeometryAndSnappedStations(
+                        line,
+                        line.geometry.filter((_, index) => index !== selectedRoutePointIndex)
+                      )
+                    : line
+                ),
+                results: undefined
+              };
+            }
             if (state.selectedStationId && state.selectedLineId) {
               return {
                 ...scenario,
@@ -466,7 +689,11 @@ export const useScenarioStore = create<ScenarioState>()(
           return {
             ...update,
             selectedStationId: selectedStationId ? undefined : state.selectedStationId,
-            selectedLineId: selectedLineId && !selectedStationId ? undefined : state.selectedLineId,
+            selectedRoutePointIndex: undefined,
+            selectedLineId:
+              selectedLineId && !selectedStationId && selectedRoutePointIndex === undefined
+                ? undefined
+                : state.selectedLineId,
             inspectedFeature: undefined
           };
         }),

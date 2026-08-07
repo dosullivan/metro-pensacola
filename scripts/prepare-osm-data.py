@@ -16,8 +16,12 @@ import urllib.request
 from typing import Any
 
 
-DEFAULT_BBOX = "-87.36,30.34,-87.11,30.57"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+DEFAULT_BBOX = "-87.36,30.34,-87.10,30.62"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 
 
 def parse_bbox(value: str) -> tuple[float, float, float, float]:
@@ -31,9 +35,7 @@ def build_query(bbox: tuple[float, float, float, float]) -> str:
     return f"""
     [out:json][timeout:90];
     (
-      way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service"]({overpass_bbox});
-      way["railway"]({overpass_bbox});
-      way["public_transport"]({overpass_bbox});
+      way["highway"~"motorway|trunk|primary|secondary|tertiary|unclassified|residential"]({overpass_bbox});
     );
     (._;>;);
     out body;
@@ -42,9 +44,20 @@ def build_query(bbox: tuple[float, float, float, float]) -> str:
 
 def fetch_overpass(query: str) -> dict[str, Any]:
     data = urllib.parse.urlencode({"data": query}).encode()
-    request = urllib.request.Request(OVERPASS_URL, data=data, method="POST")
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return json.loads(response.read().decode("utf-8"))
+    last_error: Exception | None = None
+    for url in OVERPASS_URLS:
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={"User-Agent": "MetroPensacola/0.1"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            last_error = exc
+    raise RuntimeError(f"All Overpass endpoints failed: {last_error}")
 
 
 def osm_to_geojson(osm: dict[str, Any]) -> dict[str, Any]:
@@ -53,7 +66,7 @@ def osm_to_geojson(osm: dict[str, Any]) -> dict[str, Any]:
 
     for element in osm.get("elements", []):
         if element.get("type") == "node":
-            nodes[int(element["id"])] = (float(element["lon"]), float(element["lat"]))
+            nodes[int(element["id"])] = (round(float(element["lon"]), 6), round(float(element["lat"]), 6))
 
     for element in osm.get("elements", []):
         if element.get("type") != "way":

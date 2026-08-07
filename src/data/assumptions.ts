@@ -61,6 +61,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   co2KgPerVehicleTrip: 3.9,
   baseHeadwayMinutes: 15,
   developmentGrowthRatePerFiveYears: 0.055,
+  roadSnapDistanceFeet: 650,
   downtownCoordinate: [-87.2154, 30.412],
   airportCoordinate: [-87.1866, 30.4734]
 };

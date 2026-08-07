@@ -9,6 +9,11 @@ import { lineMileage } from '../src/simulation/geo';
 import { estimateNetworkRidership } from '../src/simulation/ridership';
 import { fastestTransitPath } from '../src/simulation/routing';
 import { runSimulation } from '../src/simulation/runSimulation';
+import {
+  snapCoordinateToLineGeometry,
+  snapCoordinateToRoadCorridors,
+  type CorridorCollection
+} from '../src/simulation/snapping';
 import type { Scenario, SimulationAssumptions, SimulationZone, TransitLine } from '../src/types';
 
 function cloneAssumptions(): SimulationAssumptions {
@@ -138,6 +143,48 @@ describe('simulation primitives', () => {
   it('uses half the headway as average wait time', () => {
     expect(averageWaitTime(10)).toBe(5);
     expect(averageWaitTime(30)).toBe(15);
+  });
+
+  it('snaps route clicks to nearby OSM road corridors', () => {
+    const corridors: CorridorCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { highway: 'primary', name: 'Test Road' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [-87.2, 30.4],
+              [-87.2, 30.5]
+            ]
+          }
+        }
+      ]
+    };
+
+    const snapped = snapCoordinateToRoadCorridors([-87.201, 30.45], corridors, 600);
+    expect(snapped.snapped).toBe(true);
+    expect(snapped.coordinate[0]).toBeCloseTo(-87.2, 4);
+    expect(snapped.corridorName).toBe('Test Road');
+
+    const unsnapped = snapCoordinateToRoadCorridors([-87.22, 30.45], corridors, 100);
+    expect(unsnapped.snapped).toBe(false);
+    expect(unsnapped.coordinate).toEqual([-87.22, 30.45]);
+  });
+
+  it('snaps station coordinates onto the selected transit line geometry', () => {
+    const snapped = snapCoordinateToLineGeometry(
+      [-87.201, 30.45],
+      [
+        [-87.2, 30.4],
+        [-87.2, 30.5]
+      ]
+    );
+
+    expect(snapped.snapped).toBe(true);
+    expect(snapped.coordinate[0]).toBeCloseTo(-87.2, 4);
+    expect(snapped.coordinate[1]).toBeCloseTo(30.45, 4);
   });
 });
 

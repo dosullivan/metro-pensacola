@@ -111,6 +111,7 @@ export interface SimulationAssumptions {
   co2KgPerVehicleTrip: number;
   baseHeadwayMinutes: FrequencyMinutes;
   developmentGrowthRatePerFiveYears: number;
+  roadSnapDistanceFeet: number;
   downtownCoordinate: Coordinate;
   airportCoordinate: Coordinate;
 }

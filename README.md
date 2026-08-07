@@ -25,7 +25,10 @@ npm run build
 - View Pensacola on a MapLibre map.
 - Build BRT, light rail, elevated metro, or subway lines.
 - Draw loose route geometry by clicking the map.
-- Place draggable stations on the selected line.
+- Optionally snap BRT/light-rail route clicks to nearby OSM road corridors.
+- Drag, insert, delete, and undo route vertices.
+- Place stations on the selected line, then drag them to pull the route through a new stop location.
+- Reorder stations on a line.
 - Set peak frequency from 5 to 30 minutes.
 - Run the deterministic aggregate simulation.
 - Inspect zones, lines, and stations.
@@ -81,7 +84,7 @@ To refresh the optional OSM corridor extract:
 
 ```bash
 python3 scripts/prepare-osm-data.py \
-  --bbox -87.36,30.34,-87.11,30.57 \
+  --bbox -87.36,30.34,-87.10,30.62 \
   --out public/data/pensacola/osm-corridors.geojson
 ```
 

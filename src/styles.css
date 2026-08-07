@@ -263,6 +263,10 @@ select {
   margin-top: 10px;
 }
 
+.button-row.tight {
+  margin-top: 7px;
+}
+
 .command {
   display: inline-flex;
   flex: 1 1 auto;
@@ -414,6 +418,10 @@ select {
 }
 
 .toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px;
   font-size: 12px;
 }
@@ -605,6 +613,59 @@ select {
 }
 
 .station-marker.is-selected {
+  width: 22px;
+  height: 22px;
+  box-shadow:
+    0 0 0 3px #facc15,
+    0 10px 22px rgba(0, 0, 0, 0.44);
+}
+
+.route-point-editor {
+  margin-top: 10px;
+}
+
+.route-point-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.route-point-chip {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid rgba(244, 241, 234, 0.15);
+  color: #d8d0c3;
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 11px;
+}
+
+.route-point-chip.active {
+  border-color: #facc15;
+  color: #fff5bd;
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.route-point-actions {
+  margin-top: 8px;
+}
+
+.route-point-actions small {
+  color: #b9b0a3;
+  font-size: 11px;
+}
+
+.route-vertex-marker {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(15, 23, 42, 0.95);
+  border-radius: 50%;
+  background: var(--line-color, #2dd4bf);
+  box-shadow:
+    0 0 0 2px rgba(244, 241, 234, 0.8),
+    0 8px 16px rgba(0, 0, 0, 0.36);
+}
+
+.route-vertex-marker.is-selected {
   width: 22px;
   height: 22px;
   box-shadow:

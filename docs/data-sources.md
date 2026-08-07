@@ -15,11 +15,11 @@ The MVP includes an optional preprocessing path for OpenStreetMap corridors:
 
 ```bash
 python3 scripts/prepare-osm-data.py \
-  --bbox -87.36,30.34,-87.11,30.57 \
+  --bbox -87.36,30.34,-87.10,30.62 \
   --out public/data/pensacola/osm-corridors.geojson
 ```
 
-This script uses the Overpass API to fetch highways, railways, and public-transport ways in the Pensacola area. The generated file is not required for the current MVP because route drawing is intentionally loose. It is intended for later road-following BRT/light-rail corridor tools.
+This script uses the Overpass API to fetch OSM highway ways in the Pensacola area. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves each clicked route vertex to the nearest OSM highway within the configured snap distance; it does not yet calculate a shortest path along the street network between vertices.
 
 ## Simulation Zones
 

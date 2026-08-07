@@ -1,5 +1,8 @@
 import {
+  ArrowDown,
+  ArrowUp,
   CircleDot,
+  MapPinned,
   MousePointer2,
   Play,
   Plus,
@@ -25,15 +28,22 @@ export function BuildControls() {
   const selectedHeadway = useScenarioStore((state) => state.selectedHeadway);
   const selectedLineId = useScenarioStore((state) => state.selectedLineId);
   const selectedStationId = useScenarioStore((state) => state.selectedStationId);
+  const selectedRoutePointIndex = useScenarioStore((state) => state.selectedRoutePointIndex);
+  const roadSnapEnabled = useScenarioStore((state) => state.roadSnapEnabled);
   const simulationNotice = useScenarioStore((state) => state.simulationNotice);
   const setMode = useScenarioStore((state) => state.setMode);
   const setBuildTool = useScenarioStore((state) => state.setBuildTool);
+  const setRoadSnapEnabled = useScenarioStore((state) => state.setRoadSnapEnabled);
   const setSelectedTechnology = useScenarioStore((state) => state.setSelectedTechnology);
   const setSelectedHeadway = useScenarioStore((state) => state.setSelectedHeadway);
   const createLine = useScenarioStore((state) => state.createLine);
   const selectLine = useScenarioStore((state) => state.selectLine);
   const removeSelected = useScenarioStore((state) => state.removeSelected);
   const removeLastRoutePoint = useScenarioStore((state) => state.removeLastRoutePoint);
+  const removeRoutePoint = useScenarioStore((state) => state.removeRoutePoint);
+  const insertRoutePointAfter = useScenarioStore((state) => state.insertRoutePointAfter);
+  const selectRoutePoint = useScenarioStore((state) => state.selectRoutePoint);
+  const moveStation = useScenarioStore((state) => state.moveStation);
   const updateLineHeadway = useScenarioStore((state) => state.updateLineHeadway);
   const updateLineTechnology = useScenarioStore((state) => state.updateLineTechnology);
   const renameLine = useScenarioStore((state) => state.renameLine);
@@ -44,6 +54,11 @@ export function BuildControls() {
 
   const selectedLine = scenario.lines.find((line) => line.id === selectedLineId);
   const selectedStation = selectedLine?.stations.find((station) => station.id === selectedStationId);
+  const selectedStationOrder = selectedStation ? selectedStation.order : undefined;
+  const selectedRoutePoint =
+    selectedLine && selectedRoutePointIndex !== undefined ? selectedLine.geometry[selectedRoutePointIndex] : undefined;
+  const snapTechnology = selectedLine?.technology ?? selectedTechnology;
+  const canUseRoadSnap = snapTechnology === 'brt' || snapTechnology === 'light-rail';
   const capitalCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
   const operatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
   const remainingCapital = scenario.assumptions.capitalBudget - capitalCost;
@@ -146,6 +161,20 @@ export function BuildControls() {
         </select>
       </div>
 
+      <button
+        className={roadSnapEnabled && canUseRoadSnap ? 'toggle wide active' : 'toggle wide'}
+        disabled={!canUseRoadSnap}
+        title={
+          canUseRoadSnap
+            ? `Snap route clicks to nearby OSM roads within ${scenario.assumptions.roadSnapDistanceFeet ?? 650} feet.`
+            : 'Road snapping is available for BRT and light rail lines.'
+        }
+        onClick={() => setRoadSnapEnabled(!roadSnapEnabled)}
+      >
+        <MapPinned size={15} />
+        Road Snap {roadSnapEnabled && canUseRoadSnap ? 'On' : 'Off'}
+      </button>
+
       <div className="button-row">
         <button className="command primary" onClick={() => createLine()}>
           <Plus size={16} />
@@ -246,6 +275,67 @@ export function BuildControls() {
                   onChange={(event) => renameStation(selectedLine.id, selectedStation.id, event.target.value)}
                 />
               </label>
+              <div className="button-row tight">
+                <button
+                  className="command"
+                  disabled={selectedStationOrder === 0}
+                  onClick={() => moveStation(selectedLine.id, selectedStation.id, -1)}
+                >
+                  <ArrowUp size={16} />
+                  Earlier
+                </button>
+                <button
+                  className="command"
+                  disabled={selectedStationOrder === selectedLine.stations.length - 1}
+                  onClick={() => moveStation(selectedLine.id, selectedStation.id, 1)}
+                >
+                  <ArrowDown size={16} />
+                  Later
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {selectedLine.geometry.length > 0 ? (
+            <div className="route-point-editor">
+              <div className="panel-title small">
+                <MapPinned size={15} />
+                <span>Route Vertices</span>
+              </div>
+              <div className="route-point-list">
+                {selectedLine.geometry.map((_, index) => (
+                  <button
+                    key={`${selectedLine.id}-${index}`}
+                    className={index === selectedRoutePointIndex ? 'route-point-chip active' : 'route-point-chip'}
+                    onClick={() => selectRoutePoint(selectedLine.id, index)}
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+              {selectedRoutePoint ? (
+                <div className="route-point-actions">
+                  <small>
+                    {selectedRoutePoint[1].toFixed(5)}, {selectedRoutePoint[0].toFixed(5)}
+                  </small>
+                  <div className="button-row tight">
+                    <button
+                      className="command"
+                      onClick={() => insertRoutePointAfter(selectedLine.id, selectedRoutePointIndex as number)}
+                    >
+                      <Plus size={16} />
+                      Insert After
+                    </button>
+                    <button
+                      className="command danger"
+                      onClick={() => removeRoutePoint(selectedLine.id, selectedRoutePointIndex as number)}
+                    >
+                      <Trash2 size={16} />
+                      Delete Point
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

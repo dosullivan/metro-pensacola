@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl, { Map as LibreMap, Marker } from 'maplibre-gl';
 import { circle } from '@turf/turf';
 import { PENSACOLA_CENTER } from '../../data/pensacola/bounds';
 import { PENSACOLA_ZONES } from '../../data/pensacola/zones';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
+import {
+  snapCoordinateToLineGeometry,
+  snapCoordinateToRoadCorridors,
+  type CorridorCollection
+} from '../../simulation/snapping';
 import type { Coordinate, OverlayKey, Scenario, SimulationResults, SimulationZone, TransitLine } from '../../types';
 
 const overlayPriority: OverlayKey[] = [
@@ -121,30 +126,6 @@ function lineFeatures(lines: TransitLine[]): GeoJSON.FeatureCollection {
   };
 }
 
-function routePointFeatures(lines: TransitLine[], selectedLineId?: string): GeoJSON.FeatureCollection {
-  const selectedLine = lines.find((line) => line.id === selectedLineId);
-  if (!selectedLine) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  return {
-    type: 'FeatureCollection',
-    features: selectedLine.geometry.map((coordinate, index) => ({
-      type: 'Feature',
-      properties: {
-        id: `${selectedLine.id}-route-point-${index}`,
-        lineId: selectedLine.id,
-        index,
-        color: selectedLine.color
-      },
-      geometry: {
-        type: 'Point',
-        coordinates: coordinate
-      }
-    }))
-  };
-}
-
 function catchmentFeatures(lines: TransitLine[], enabled: boolean): GeoJSON.FeatureCollection {
   if (!enabled) {
     return { type: 'FeatureCollection', features: [] };
@@ -175,6 +156,10 @@ function setGeoJsonSource(map: LibreMap, sourceId: string, data: GeoJSON.Feature
   if (source) {
     source.setData(data);
   }
+}
+
+function emptyFeatureCollection(): GeoJSON.FeatureCollection {
+  return { type: 'FeatureCollection', features: [] };
 }
 
 function addMapSourcesAndLayers(map: LibreMap) {
@@ -257,29 +242,19 @@ function addMapSourcesAndLayers(map: LibreMap) {
     });
   }
 
-  if (!map.getSource('route-points')) {
-    map.addSource('route-points', {
+  if (!map.getSource('osm-corridors')) {
+    map.addSource('osm-corridors', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
     });
     map.addLayer({
-      id: 'route-points-halo',
-      type: 'circle',
-      source: 'route-points',
+      id: 'osm-corridors',
+      type: 'line',
+      source: 'osm-corridors',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'circle-color': 'rgba(15, 23, 42, 0.92)',
-        'circle-radius': 8,
-        'circle-stroke-color': 'rgba(244, 241, 234, 0.85)',
-        'circle-stroke-width': 1.5
-      }
-    });
-    map.addLayer({
-      id: 'route-points',
-      type: 'circle',
-      source: 'route-points',
-      paint: {
-        'circle-color': ['get', 'color'],
-        'circle-radius': 4.5
+        'line-color': 'rgba(45, 212, 191, 0.35)',
+        'line-width': 1.4
       }
     });
   }
@@ -289,33 +264,68 @@ export function TransitMap() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LibreMap | null>(null);
   const markersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
+  const routeVertexMarkersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
+  const [osmCorridors, setOsmCorridors] = useState<CorridorCollection | undefined>();
 
   const scenario = useScenarioStore(selectActiveScenario);
   const mode = useScenarioStore((state) => state.mode);
   const buildTool = useScenarioStore((state) => state.buildTool);
+  const roadSnapEnabled = useScenarioStore((state) => state.roadSnapEnabled);
+  const selectedTechnology = useScenarioStore((state) => state.selectedTechnology);
   const overlays = useScenarioStore((state) => state.overlays);
   const selectedLineId = useScenarioStore((state) => state.selectedLineId);
   const selectedStationId = useScenarioStore((state) => state.selectedStationId);
+  const selectedRoutePointIndex = useScenarioStore((state) => state.selectedRoutePointIndex);
   const addRoutePoint = useScenarioStore((state) => state.addRoutePoint);
   const addStation = useScenarioStore((state) => state.addStation);
+  const selectRoutePoint = useScenarioStore((state) => state.selectRoutePoint);
+  const updateRoutePointCoordinate = useScenarioStore((state) => state.updateRoutePointCoordinate);
   const updateStationCoordinate = useScenarioStore((state) => state.updateStationCoordinate);
   const selectLine = useScenarioStore((state) => state.selectLine);
   const setInspectedFeature = useScenarioStore((state) => state.setInspectedFeature);
+  const selectedLine = scenario.lines.find((line) => line.id === selectedLineId);
+  const snapTechnology = selectedLine?.technology ?? selectedTechnology;
+  const canSnapRouteClicks = roadSnapEnabled && (snapTechnology === 'brt' || snapTechnology === 'light-rail');
+  const snapStationToLine = (coordinate: Coordinate, line: TransitLine | undefined): Coordinate =>
+    line && line.geometry.length > 0 ? snapCoordinateToLineGeometry(coordinate, line.geometry).coordinate : coordinate;
 
   const sourceData = useMemo(
     () => ({
       zones: zoneFeatures(PENSACOLA_ZONES, scenario, overlays),
       lines: lineFeatures(scenario.lines),
-      routePoints: routePointFeatures(scenario.lines, selectedLineId),
+      corridors:
+        roadSnapEnabled && osmCorridors
+          ? (osmCorridors as GeoJSON.FeatureCollection)
+          : emptyFeatureCollection(),
       catchments: catchmentFeatures(scenario.lines, overlays.catchments)
     }),
-    [scenario, overlays, selectedLineId]
+    [scenario, overlays, roadSnapEnabled, osmCorridors]
   );
   const sourceDataRef = useRef(sourceData);
 
   useEffect(() => {
     sourceDataRef.current = sourceData;
   }, [sourceData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/data/pensacola/osm-corridors.geojson')
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((data: CorridorCollection | undefined) => {
+        if (isMounted && data?.type === 'FeatureCollection') {
+          setOsmCorridors(data);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setOsmCorridors(undefined);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -336,7 +346,7 @@ export function TransitMap() {
       addMapSourcesAndLayers(map);
       setGeoJsonSource(map, 'zones', sourceDataRef.current.zones);
       setGeoJsonSource(map, 'transit-lines', sourceDataRef.current.lines);
-      setGeoJsonSource(map, 'route-points', sourceDataRef.current.routePoints);
+      setGeoJsonSource(map, 'osm-corridors', sourceDataRef.current.corridors);
       setGeoJsonSource(map, 'catchments', sourceDataRef.current.catchments);
     });
 
@@ -344,6 +354,8 @@ export function TransitMap() {
     return () => {
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current.clear();
+      routeVertexMarkersRef.current.forEach((marker) => marker.remove());
+      routeVertexMarkersRef.current.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -357,7 +369,7 @@ export function TransitMap() {
     addMapSourcesAndLayers(map);
     setGeoJsonSource(map, 'zones', sourceData.zones);
     setGeoJsonSource(map, 'transit-lines', sourceData.lines);
-    setGeoJsonSource(map, 'route-points', sourceData.routePoints);
+    setGeoJsonSource(map, 'osm-corridors', sourceData.corridors);
     setGeoJsonSource(map, 'catchments', sourceData.catchments);
   }, [sourceData]);
 
@@ -368,12 +380,20 @@ export function TransitMap() {
     }
 
     const handleClick = (event: maplibregl.MapMouseEvent) => {
-      const coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
+      let coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
       if (mode === 'build') {
         if (buildTool === 'draw-line') {
+          if (canSnapRouteClicks) {
+            const snapResult = snapCoordinateToRoadCorridors(
+              coordinate,
+              osmCorridors,
+              scenario.assumptions.roadSnapDistanceFeet ?? 650
+            );
+            coordinate = snapResult.coordinate;
+          }
           addRoutePoint(coordinate);
         } else {
-          addStation(coordinate);
+          addStation(snapStationToLine(coordinate, selectedLine));
         }
         return;
       }
@@ -401,7 +421,18 @@ export function TransitMap() {
     return () => {
       map.off('click', handleClick);
     };
-  }, [addRoutePoint, addStation, buildTool, mode, selectLine, setInspectedFeature]);
+  }, [
+    addRoutePoint,
+    addStation,
+    buildTool,
+    canSnapRouteClicks,
+    mode,
+    osmCorridors,
+    scenario.assumptions.roadSnapDistanceFeet,
+    selectLine,
+    selectedLine,
+    setInspectedFeature
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -433,17 +464,59 @@ export function TransitMap() {
           setInspectedFeature({ type: 'station', lineId: line.id, stationId: station.id });
         });
 
-        const marker = new maplibregl.Marker({ element, draggable: true })
+        const marker = new maplibregl.Marker({ element, draggable: mode === 'build' })
           .setLngLat(station.coordinate)
           .addTo(map);
         marker.on('dragend', () => {
           const lngLat = marker.getLngLat();
-          updateStationCoordinate(line.id, station.id, [lngLat.lng, lngLat.lat]);
+          const coordinate: Coordinate = [lngLat.lng, lngLat.lat];
+          marker.setLngLat(coordinate);
+          updateStationCoordinate(line.id, station.id, coordinate);
         });
         markersRef.current.set(station.id, marker);
       }
     }
-  }, [scenario.lines, selectedLineId, selectedStationId, selectLine, setInspectedFeature, updateStationCoordinate]);
+  }, [mode, scenario.lines, selectedLineId, selectedStationId, selectLine, setInspectedFeature, updateStationCoordinate]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    routeVertexMarkersRef.current.forEach((marker) => marker.remove());
+    routeVertexMarkersRef.current.clear();
+
+    if (!selectedLine) {
+      return;
+    }
+
+    selectedLine.geometry.forEach((coordinate, index) => {
+      const element = document.createElement('button');
+      element.className = `route-vertex-marker${index === selectedRoutePointIndex ? ' is-selected' : ''}`;
+      element.style.setProperty('--line-color', selectedLine.color);
+      element.title = `Route point ${index + 1}`;
+      element.type = 'button';
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        selectRoutePoint(selectedLine.id, index);
+      });
+
+      const marker = new maplibregl.Marker({ element, draggable: true })
+        .setLngLat(coordinate)
+        .addTo(map);
+      marker.on('dragend', () => {
+        const lngLat = marker.getLngLat();
+        updateRoutePointCoordinate(selectedLine.id, index, [lngLat.lng, lngLat.lat]);
+      });
+      routeVertexMarkersRef.current.set(`${selectedLine.id}-${index}`, marker);
+    });
+  }, [
+    selectedLine,
+    selectedRoutePointIndex,
+    selectRoutePoint,
+    updateRoutePointCoordinate
+  ]);
 
   return (
     <div className="map-shell">
