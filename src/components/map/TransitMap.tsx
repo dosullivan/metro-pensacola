@@ -12,6 +12,7 @@ import {
   snapCoordinateToRoadCorridors,
   type CorridorCollection
 } from '../../simulation/snapping';
+import { nearestTransferStation, transferPartnersForStation } from '../../simulation/transfers';
 import type { Coordinate, OverlayKey, Scenario, SimulationResults, SimulationZone, TransitLine } from '../../types';
 
 const overlayPriority: OverlayKey[] = [
@@ -320,6 +321,7 @@ export function TransitMap() {
   const setInspectedFeature = useScenarioStore((state) => state.setInspectedFeature);
   const selectedLine = scenario.lines.find((line) => line.id === selectedLineId);
   const roadNetwork = useMemo(() => buildRoadNetwork(osmCorridors), [osmCorridors]);
+  const transferSnapDistanceFeet = scenario.assumptions.transferDistanceFeet;
   const canUseRoadSnap = useCallback(
     (line: TransitLine | undefined = selectedLine): boolean => {
       const technology = line?.technology ?? selectedTechnology;
@@ -344,6 +346,18 @@ export function TransitMap() {
       scenario.assumptions.roadSnapDistanceFeet,
       osmCorridors
     ]
+  );
+  const snapToTransferOrRoad = useCallback(
+    (coordinate: Coordinate, line: TransitLine | undefined = selectedLine): Coordinate => {
+      const transferStation = nearestTransferStation(
+        coordinate,
+        scenario.lines,
+        line?.id,
+        transferSnapDistanceFeet
+      );
+      return transferStation?.coordinate ?? snapToRoadIfEnabled(coordinate, line);
+    },
+    [scenario.lines, selectedLine, snapToRoadIfEnabled, transferSnapDistanceFeet]
   );
   const roadPathIfEnabled = useCallback(
     (start: Coordinate | undefined, end: Coordinate, line: TransitLine | undefined = selectedLine): Coordinate[] | undefined => {
@@ -454,12 +468,18 @@ export function TransitMap() {
       let coordinate: Coordinate = [event.lngLat.lng, event.lngLat.lat];
       if (mode === 'build') {
         if (buildTool === 'draw-line') {
-          const snappedCoordinate = snapToRoadIfEnabled(coordinate);
+          const snappedCoordinate = snapToTransferOrRoad(coordinate);
           const previousCoordinate = selectedLine?.geometry[selectedLine.geometry.length - 1];
           addRouteStop(snappedCoordinate, roadPathIfEnabled(previousCoordinate, snappedCoordinate));
         } else {
-          const roadSnappedCoordinate = snapToRoadIfEnabled(coordinate);
-          addStation(snapStationToLine(roadSnappedCoordinate, selectedLine));
+          const transferStation = nearestTransferStation(
+            coordinate,
+            scenario.lines,
+            selectedLine?.id,
+            transferSnapDistanceFeet
+          );
+          const snappedCoordinate = transferStation?.coordinate ?? snapToRoadIfEnabled(coordinate, selectedLine);
+          addStation(transferStation ? snappedCoordinate : snapStationToLine(snappedCoordinate, selectedLine));
         }
         return;
       }
@@ -492,10 +512,12 @@ export function TransitMap() {
     addStation,
     buildTool,
     mode,
+    scenario.lines,
     selectLine,
     selectedLine,
     roadPathIfEnabled,
     snapToRoadIfEnabled,
+    snapToTransferOrRoad,
     setInspectedFeature
   ]);
 
@@ -519,9 +541,19 @@ export function TransitMap() {
     for (const line of scenario.lines) {
       for (const station of line.stations) {
         const element = document.createElement('button');
-        element.className = `station-marker${station.id === selectedStationId ? ' is-selected' : ''}`;
+        const transferPartners = transferPartnersForStation(
+          station,
+          scenario.lines,
+          transferSnapDistanceFeet
+        );
+        element.className = `station-marker${station.id === selectedStationId ? ' is-selected' : ''}${
+          transferPartners.length > 0 ? ' is-transfer' : ''
+        }`;
         element.style.setProperty('--station-color', line.color);
-        element.title = station.name;
+        element.title =
+          transferPartners.length > 0
+            ? `${station.name} - transfer to ${transferPartners.map((partner) => partner.lineName).join(', ')}`
+            : station.name;
         element.type = 'button';
         element.addEventListener('click', (event) => {
           event.stopPropagation();
@@ -534,7 +566,7 @@ export function TransitMap() {
           .addTo(map);
         marker.on('dragend', () => {
           const lngLat = marker.getLngLat();
-          const coordinate = snapToRoadIfEnabled([lngLat.lng, lngLat.lat], line);
+          const coordinate = snapToTransferOrRoad([lngLat.lng, lngLat.lat], line);
           marker.setLngLat(coordinate);
           updateStationCoordinate(line.id, station.id, coordinate);
         });
@@ -548,7 +580,8 @@ export function TransitMap() {
     selectedStationId,
     selectLine,
     setInspectedFeature,
-    snapToRoadIfEnabled,
+    snapToTransferOrRoad,
+    transferSnapDistanceFeet,
     updateStationCoordinate
   ]);
   return (

@@ -299,6 +299,26 @@ describe('scenario store simulation action', () => {
     expect(line.stations[1].coordinate).toEqual([-87.18, 30.46]);
   });
 
+  it('bends an existing route through a newly added transfer stop', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    useScenarioStore.getState().addRouteStop([-87.18, 30.42]);
+    const lineId = selectActiveScenario(useScenarioStore.getState()).lines[0].id;
+
+    useScenarioStore.getState().addStation([-87.2, 30.44]);
+
+    const line = selectActiveScenario(useScenarioStore.getState()).lines.find((candidate) => candidate.id === lineId);
+    expect(line?.geometry).toEqual([
+      [-87.22, 30.42],
+      [-87.2, 30.44],
+      [-87.18, 30.42]
+    ]);
+    expect(line?.stations[(line?.stations.length ?? 1) - 1]?.coordinate).toEqual([-87.2, 30.44]);
+  });
+
   it('undoes the station created by the last route-mode click', () => {
     const scenario = cloneScenario(DEMO_SCENARIO);
     scenario.lines = [];

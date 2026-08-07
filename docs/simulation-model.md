@@ -88,7 +88,7 @@ Transit routing uses Dijkstra over a station graph:
 - Base station nodes represent platforms or transfer points.
 - Boarding an onboard line state adds average wait time.
 - Adjacent stations on the same line are connected by in-vehicle time.
-- Stations within 400 feet receive transfer edges.
+- Stations within 400 feet receive transfer edges. In build mode, placing or dragging a stop near a stop on another line snaps to that stop location so the transfer is explicit.
 - Transfers add a penalty, and boarding the next line adds its wait time.
 
 Transit generalized time:

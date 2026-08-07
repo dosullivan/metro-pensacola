@@ -2,6 +2,7 @@ import { Info, MapPin, Route } from 'lucide-react';
 import { PENSACOLA_ZONES } from '../../data/pensacola/zones';
 import { calculateStationCatchment } from '../../simulation/catchment';
 import { calculateConstructionCost, calculateLineMileage } from '../../simulation/costs';
+import { transferPartnersForStation } from '../../simulation/transfers';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import { formatCurrency, formatMiles, formatNumber, formatPercent } from '../../utils/format';
 
@@ -122,6 +123,12 @@ export function InspectorPanel() {
     const result = scenario.results?.stationResults.find((candidate) => candidate.stationId === inspectedFeature.stationId);
     if (line && station) {
       const catchment = result?.catchment ?? calculateStationCatchment(station, PENSACOLA_ZONES, scenario.assumptions);
+      const transferPartners = transferPartnersForStation(
+        station,
+        scenario.lines,
+        scenario.assumptions.transferDistanceFeet
+      );
+      const transferLineNames = Array.from(new Set(transferPartners.map((partner) => partner.lineName)));
       content = (
         <>
           <h3>{station.name}</h3>
@@ -153,6 +160,10 @@ export function InspectorPanel() {
             <div>
               <span>Transfers</span>
               <strong>{formatNumber(result?.transfers ?? 0)}</strong>
+            </div>
+            <div>
+              <span>Transfer Lines</span>
+              <strong>{transferLineNames.length > 0 ? transferLineNames.join(', ') : 'None'}</strong>
             </div>
             <div>
               <span>Development Potential</span>

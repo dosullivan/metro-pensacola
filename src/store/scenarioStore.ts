@@ -26,6 +26,7 @@ export type InspectedFeature =
   | undefined;
 
 const STATION_VERTEX_PULL_DISTANCE_FEET = 150;
+const SAME_COORDINATE_DISTANCE_FEET = 20;
 
 interface ScenarioState {
   scenarios: Scenario[];
@@ -190,6 +191,10 @@ function closestRouteVertexIndex(geometry: Coordinate[], coordinate: Coordinate)
   return closestDistanceFeet <= STATION_VERTEX_PULL_DISTANCE_FEET ? closestIndex : undefined;
 }
 
+function coordinatesWithinFeet(a: Coordinate, b: Coordinate, maxDistanceFeet = SAME_COORDINATE_DISTANCE_FEET): boolean {
+  return distanceMiles(a, b) * 5280 < maxDistanceFeet;
+}
+
 function geometryPulledByStation(
   line: TransitLine,
   station: Station,
@@ -280,9 +285,23 @@ function geometryWithAddedStation(line: TransitLine, coordinate: Coordinate): Co
   }
   if (line.geometry.length === 1) {
     const existing = line.geometry[0];
-    return distanceMiles(existing, coordinate) * 5280 < 20 ? line.geometry : [existing, coordinate];
+    return coordinatesWithinFeet(existing, coordinate) ? line.geometry : [existing, coordinate];
   }
-  return line.geometry;
+
+  if (line.geometry.some((point) => coordinatesWithinFeet(point, coordinate))) {
+    return line.geometry;
+  }
+
+  const snapResult = snapCoordinateToLineGeometry(coordinate, line.geometry);
+  const insertIndex =
+    snapResult.segmentStartIndex !== undefined
+      ? snapResult.segmentStartIndex + 1
+      : line.geometry.length;
+  return [
+    ...line.geometry.slice(0, insertIndex),
+    coordinate,
+    ...line.geometry.slice(insertIndex)
+  ];
 }
 
 function geometryWithAddedRouteStop(
@@ -300,9 +319,10 @@ function geometryWithAddedRouteStop(
 
   const lastPoint = line.geometry[line.geometry.length - 1];
   const startsAtCurrentEnd =
-    Math.abs(geometrySegment[0][0] - lastPoint[0]) < 0.000001 &&
-    Math.abs(geometrySegment[0][1] - lastPoint[1]) < 0.000001;
-  return [...line.geometry, ...(startsAtCurrentEnd ? geometrySegment.slice(1) : geometrySegment)];
+    coordinatesWithinFeet(geometrySegment[0], lastPoint, SAME_COORDINATE_DISTANCE_FEET);
+  const newGeometry = [...line.geometry, ...(startsAtCurrentEnd ? geometrySegment.slice(1) : geometrySegment)];
+  const routeEnd = newGeometry[newGeometry.length - 1];
+  return coordinatesWithinFeet(routeEnd, coordinate) ? newGeometry : [...newGeometry, coordinate];
 }
 
 function withStationsFromRouteGeometry(line: TransitLine): TransitLine {

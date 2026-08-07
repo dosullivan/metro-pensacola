@@ -28,6 +28,7 @@ npm run build
 - Optionally snap BRT/light-rail stops to nearby OSM road corridors and draw route segments along the extracted road network.
 - Drag stops to reshape routes and undo the most recent stop or route bend.
 - Place stations on the selected line, then drag them to pull the route through a new stop location.
+- Link lines by placing or dragging a stop near another line's stop; nearby stops snap together and allow transfers.
 - Reorder stations on a line.
 - Set peak frequency from 5 to 30 minutes.
 - Run the deterministic aggregate simulation.

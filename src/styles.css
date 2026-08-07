@@ -620,6 +620,22 @@ select {
     0 10px 22px rgba(0, 0, 0, 0.44);
 }
 
+.station-marker.is-transfer {
+  box-shadow:
+    0 0 0 2px rgba(244, 241, 234, 0.86),
+    0 0 0 6px rgba(250, 204, 21, 0.3),
+    0 8px 18px rgba(0, 0, 0, 0.36);
+}
+
+.station-marker.is-selected.is-transfer {
+  width: 22px;
+  height: 22px;
+  box-shadow:
+    0 0 0 3px #facc15,
+    0 0 0 7px rgba(250, 204, 21, 0.28),
+    0 10px 22px rgba(0, 0, 0, 0.44);
+}
+
 .maplibregl-ctrl-group {
   border-radius: 0 !important;
   background: rgba(20, 20, 17, 0.9) !important;

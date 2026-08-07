@@ -16,6 +16,7 @@ import {
   snapCoordinateToRoadCorridors,
   type CorridorCollection
 } from '../src/simulation/snapping';
+import { nearestTransferStation, transferPartnersForStation } from '../src/simulation/transfers';
 import type { Scenario, SimulationAssumptions, SimulationZone, TransitLine } from '../src/types';
 
 function cloneAssumptions(): SimulationAssumptions {
@@ -225,6 +226,33 @@ describe('simulation primitives', () => {
     expect(snapped.coordinate[0]).toBeCloseTo(-87.2, 4);
     expect(snapped.coordinate[1]).toBeCloseTo(30.45, 4);
   });
+
+  it('finds nearby transfer stations across lines', () => {
+    const lineA = testLine({ id: 'line-a' });
+    const lineB = testLine({
+      id: 'line-b',
+      stations: [
+        {
+          id: 'line-b-transfer',
+          lineId: 'line-b',
+          name: 'Transfer Stop',
+          coordinate: [-87.1866, 30.4734],
+          order: 0
+        }
+      ]
+    });
+
+    const candidate = nearestTransferStation(
+      [-87.1868, 30.4735],
+      [lineA, lineB],
+      lineA.id,
+      DEFAULT_ASSUMPTIONS.transferDistanceFeet
+    );
+    const partners = transferPartnersForStation(lineA.stations[1], [lineA, lineB], DEFAULT_ASSUMPTIONS.transferDistanceFeet);
+
+    expect(candidate?.stationId).toBe('line-b-transfer');
+    expect(partners.map((partner) => partner.stationId)).toContain('line-b-transfer');
+  });
 });
 
 describe('routing and ridership', () => {
@@ -235,6 +263,62 @@ describe('routing and ridership', () => {
     expect(path).toBeDefined();
     expect(path?.lineIds).toContain(line.id);
     expect(path?.totalMinutes).toBeGreaterThan(0);
+  });
+
+  it('routes through transfer stations between connected lines', () => {
+    const assumptions = cloneAssumptions();
+    const lineA = testLine({
+      id: 'line-a',
+      geometry: [
+        [-87.2155, 30.4122],
+        [-87.1866, 30.4734]
+      ],
+      stations: [
+        {
+          id: 'line-a-origin',
+          lineId: 'line-a',
+          name: 'Origin Station',
+          coordinate: [-87.2155, 30.4122],
+          order: 0
+        },
+        {
+          id: 'line-a-transfer',
+          lineId: 'line-a',
+          name: 'Transfer Station',
+          coordinate: [-87.1866, 30.4734],
+          order: 1
+        }
+      ]
+    });
+    const lineB = testLine({
+      id: 'line-b',
+      geometry: [
+        [-87.1866, 30.4734],
+        [-87.31, 30.5]
+      ],
+      stations: [
+        {
+          id: 'line-b-transfer',
+          lineId: 'line-b',
+          name: 'Transfer Station',
+          coordinate: [-87.1866, 30.4734],
+          order: 0
+        },
+        {
+          id: 'line-b-outer',
+          lineId: 'line-b',
+          name: 'Outer Station',
+          coordinate: [-87.31, 30.5],
+          order: 1
+        }
+      ]
+    });
+
+    const path = fastestTransitPath(testZones[0].centroid, testZones[2].centroid, [lineA, lineB], assumptions);
+
+    expect(path?.lineIds).toContain(lineA.id);
+    expect(path?.lineIds).toContain(lineB.id);
+    expect(path?.transferStationIds.length).toBeGreaterThan(0);
   });
 
   it('increases ridership when transit is faster', () => {
