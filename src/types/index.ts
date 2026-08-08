@@ -6,6 +6,8 @@ export type FrequencyMinutes = 5 | 10 | 15 | 20 | 30;
 
 export type AppMode = 'inspect' | 'build';
 
+export type ScenarioGameMode = 'sandbox' | 'career';
+
 export type BuildTool = 'draw-line' | 'place-station';
 
 export type OverlayKey =
@@ -146,6 +148,8 @@ export interface SimulationAssumptions {
 export interface Scenario {
   id: string;
   name: string;
+  gameMode: ScenarioGameMode;
+  autoSimulationEnabled: boolean;
   lines: TransitLine[];
   assumptions: SimulationAssumptions;
   simulationYear: number;

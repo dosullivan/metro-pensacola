@@ -35,6 +35,7 @@ npm run build
 - Inspect zones, lines, and stations.
 - Toggle population, employment, density, accessibility, ridership, development, land value, and station catchment overlays.
 - Automatically persist scenarios in browser storage, with controls to switch, duplicate, delete, restore, and compare them.
+- Keep the classic manual-run Sandbox workflow, or switch a scenario to Career mode for debounced live simulation with latest-change-wins worker scheduling.
 - Show advisory capital and operating budgets; enabling Budget Limits highlights overruns but does not block construction.
 - Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 

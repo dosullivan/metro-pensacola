@@ -52,6 +52,9 @@ describe('scenario store simulation action', () => {
 
   it('merges new assumption defaults into legacy persisted scenarios', () => {
     const legacyScenario = cloneScenario(DEMO_SCENARIO);
+    const legacyGameplay = legacyScenario as Partial<Scenario>;
+    delete legacyGameplay.gameMode;
+    delete legacyGameplay.autoSimulationEnabled;
     const legacyAssumptions = legacyScenario.assumptions as Partial<Scenario['assumptions']>;
     delete legacyAssumptions.valueOfTimeDollarsPerHour;
     delete legacyAssumptions.carCostPerMile;
@@ -137,12 +140,16 @@ describe('scenario store simulation action', () => {
     expect(mergedScenario.assumptions.pathChoiceMaximumExtraMinutes).toBe(
       DEFAULT_ASSUMPTIONS.pathChoiceMaximumExtraMinutes
     );
+    expect(mergedScenario.gameMode).toBe('sandbox');
+    expect(mergedScenario.autoSimulationEnabled).toBe(false);
   });
 
   it('shows an explicit notice when there is no usable service', () => {
     const blankScenario: Scenario = {
       id: 'blank',
       name: 'Blank Scenario',
+      gameMode: 'sandbox',
+      autoSimulationEnabled: false,
       lines: [],
       assumptions: DEFAULT_ASSUMPTIONS,
       simulationYear: 0,

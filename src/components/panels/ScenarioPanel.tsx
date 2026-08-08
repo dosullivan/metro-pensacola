@@ -22,6 +22,7 @@ export function ScenarioPanel() {
   const renameScenario = useScenarioStore((state) => state.renameScenario);
   const saveScenario = useScenarioStore((state) => state.saveScenario);
   const setSimulationYear = useScenarioStore((state) => state.setSimulationYear);
+  const setScenarioGameMode = useScenarioStore((state) => state.setScenarioGameMode);
   const toggleBudgetLimits = useScenarioStore((state) => state.toggleBudgetLimits);
   const toggleScenarioComparison = useScenarioStore((state) => state.toggleScenarioComparison);
 
@@ -43,6 +44,21 @@ export function ScenarioPanel() {
       </select>
 
       <input value={scenario.name} onChange={(event) => renameScenario(scenario.id, event.target.value)} />
+
+      <div className="segmented">
+        <button
+          className={scenario.gameMode === 'sandbox' ? 'active' : ''}
+          onClick={() => setScenarioGameMode('sandbox')}
+        >
+          Sandbox
+        </button>
+        <button
+          className={scenario.gameMode === 'career' ? 'active' : ''}
+          onClick={() => setScenarioGameMode('career')}
+        >
+          Career
+        </button>
+      </div>
 
       <div className="button-row">
         <button className="command" onClick={() => newScenario()}>

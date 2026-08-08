@@ -48,6 +48,7 @@ export function BuildControls() {
   const renameStation = useScenarioStore((state) => state.renameStation);
   const runActiveSimulation = useScenarioStore((state) => state.runActiveSimulation);
   const isSimulating = useScenarioStore((state) => state.isSimulating);
+  const toggleAutoSimulation = useScenarioStore((state) => state.toggleAutoSimulation);
   const saveScenario = useScenarioStore((state) => state.saveScenario);
   const setInspectedFeature = useScenarioStore((state) => state.setInspectedFeature);
 
@@ -182,11 +183,23 @@ export function BuildControls() {
           <Save size={16} />
           Save
         </button>
-        <button className="command run" onClick={() => runActiveSimulation()} disabled={isSimulating}>
+        <button
+          className="command run"
+          onClick={() => runActiveSimulation()}
+          aria-busy={isSimulating}
+        >
           <Play size={16} />
           {isSimulating ? 'Simulating…' : 'Run Simulation'}
         </button>
       </div>
+      {scenario.gameMode === 'career' ? (
+        <button
+          className={scenario.autoSimulationEnabled ? 'toggle wide active' : 'toggle wide'}
+          onClick={toggleAutoSimulation}
+        >
+          Live Results {scenario.autoSimulationEnabled ? 'On' : 'Off'}
+        </button>
+      ) : null}
       {simulationNotice ? <div className="run-feedback">{simulationNotice}</div> : null}
 
       <div className="line-list">

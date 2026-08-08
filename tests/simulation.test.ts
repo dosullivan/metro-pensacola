@@ -786,6 +786,8 @@ describe('routing and ridership', () => {
     const scenario: Scenario = {
       id: 'two-lines',
       name: 'Two Lines',
+      gameMode: 'sandbox',
+      autoSimulationEnabled: false,
       lines: [firstLine, secondLine],
       assumptions,
       simulationYear: 0,
@@ -977,6 +979,8 @@ describe('development and deterministic runs', () => {
     const scenario: Scenario = {
       id: 'airport-fixture',
       name: 'Airport Fixture',
+      gameMode: 'sandbox',
+      autoSimulationEnabled: false,
       lines: [testLine({ id: 'airport-fixture-line' })],
       assumptions: cloneAssumptions(),
       simulationYear: 0,

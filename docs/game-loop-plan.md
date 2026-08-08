@@ -20,6 +20,8 @@ Auto-run the simulation as the player edits, replacing the run-button loop with 
 - Keep the manual Run button working as a fallback and as the only mode when auto-sim is toggled off; subtle "simulating" indicator instead of a disabled button.
 - Tests: edit during a run schedules exactly one follow-up run with the latest fingerprint; unchanged fingerprint schedules nothing (no infinite rerun loop); debounce coalesces rapid edits.
 
+Status: completed. Scenarios now persist `sandbox | career` mode and a per-scenario live-results toggle. Sandbox retains the manual workflow; Career enables a 300 ms debounced store subscription. In-flight edits use latest-wins scheduling, rapid edits coalesce, unchanged fingerprints do not rerun, and the manual Run control remains available without locking the surrounding UI.
+
 ## Phase 2 — Hard budgets and funding progression
 
 The single change that creates an early game: you cannot afford rail on day one.

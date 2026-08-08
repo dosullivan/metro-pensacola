@@ -249,6 +249,8 @@ const paceConnectorLine = buildLine(
 export const DEMO_SCENARIO: Scenario = {
   id: 'demo-conceptual-corridor',
   name: 'Demo: Three-Corridor BRT Network',
+  gameMode: 'sandbox',
+  autoSimulationEnabled: false,
   lines: [airportUwfLine, westsideLine, paceConnectorLine],
   assumptions: DEFAULT_ASSUMPTIONS,
   simulationYear: 0,

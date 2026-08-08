@@ -13,6 +13,7 @@ import type {
   Coordinate,
   OverlayKey,
   Scenario,
+  ScenarioGameMode,
   Station,
   TransitLine,
   TransitTechnologyId,
@@ -60,6 +61,8 @@ interface ScenarioState {
   renameScenario: (scenarioId: string, name: string) => void;
   saveScenario: () => void;
   setSimulationYear: (year: number) => void;
+  setScenarioGameMode: (mode: ScenarioGameMode) => void;
+  toggleAutoSimulation: () => void;
   toggleBudgetLimits: () => void;
   toggleOverlay: (overlay: OverlayKey) => void;
   setInspectedFeature: (feature: InspectedFeature) => void;
@@ -82,7 +85,7 @@ interface ScenarioState {
   removeLastRoutePoint: (lineId: string) => void;
   removeSelected: () => void;
   repairGeometryOnlyLines: () => void;
-  runActiveSimulation: () => void;
+  runActiveSimulation: (source?: 'manual' | 'auto') => void;
   toggleScenarioComparison: (scenarioId: string) => void;
 }
 
@@ -155,6 +158,8 @@ function blankScenario(index: number): Scenario {
   return {
     id: makeId('scenario'),
     name: `New Scenario ${index}`,
+    gameMode: 'sandbox',
+    autoSimulationEnabled: false,
     lines: [],
     assumptions: cloneScenario({ ...DEMO_SCENARIO, assumptions: DEFAULT_ASSUMPTIONS }).assumptions,
     simulationYear: 0,
@@ -164,6 +169,53 @@ function blankScenario(index: number): Scenario {
 
 function getActiveScenario(state: ScenarioState): Scenario {
   return state.scenarios.find((scenario) => scenario.id === state.activeScenarioId) ?? state.scenarios[0];
+}
+
+export function simulationInputsFingerprint(scenario: Scenario): string {
+  return JSON.stringify({
+    lines: scenario.lines,
+    assumptions: scenario.assumptions,
+    simulationYear: scenario.simulationYear
+  });
+}
+
+const AUTO_SIMULATION_DEBOUNCE_MS = 300;
+let autoSimulationTimer: ReturnType<typeof setTimeout> | undefined;
+let autoSimulationPending = false;
+let suppressAutoSimulationSubscription = false;
+
+function cancelAutoSimulationTimer(): void {
+  if (autoSimulationTimer !== undefined) {
+    clearTimeout(autoSimulationTimer);
+    autoSimulationTimer = undefined;
+  }
+}
+
+function scheduleAutoSimulation(delay = AUTO_SIMULATION_DEBOUNCE_MS): void {
+  cancelAutoSimulationTimer();
+  autoSimulationTimer = setTimeout(() => {
+    autoSimulationTimer = undefined;
+    const state = useScenarioStore.getState();
+    const scenario = getActiveScenario(state);
+    if (scenario.gameMode !== 'career' || !scenario.autoSimulationEnabled) {
+      autoSimulationPending = false;
+      return;
+    }
+    if (state.isSimulating) {
+      autoSimulationPending = true;
+      return;
+    }
+    autoSimulationPending = false;
+    state.runActiveSimulation('auto');
+  }, delay);
+}
+
+function flushPendingAutoSimulation(): void {
+  if (!autoSimulationPending) {
+    return;
+  }
+  autoSimulationPending = false;
+  scheduleAutoSimulation(0);
 }
 
 function updateActiveScenario(
@@ -507,6 +559,22 @@ export const useScenarioStore = create<ScenarioState>()(
             ...scenario,
             simulationYear: year,
             results: undefined
+          }))
+        ),
+      setScenarioGameMode: (gameMode) =>
+        set((state) =>
+          updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            gameMode,
+            autoSimulationEnabled: gameMode === 'career'
+          }))
+        ),
+      toggleAutoSimulation: () =>
+        set((state) =>
+          updateActiveScenario(state, (scenario) => ({
+            ...scenario,
+            autoSimulationEnabled:
+              scenario.gameMode === 'career' ? !scenario.autoSimulationEnabled : false
           }))
         ),
       toggleBudgetLimits: () =>
@@ -940,23 +1008,21 @@ export const useScenarioStore = create<ScenarioState>()(
           });
           return didRepair ? update : {};
         }),
-      runActiveSimulation: () => {
+      runActiveSimulation: (source = 'manual') => {
         if (get().isSimulating) {
           return;
         }
+        cancelAutoSimulationTimer();
+        autoSimulationPending = false;
         const activeScenario = scenarioWithGeometryOnlyLinesRepaired(getActiveScenario(get())).scenario;
-        const simulationInputsFingerprint = (scenario: Scenario) =>
-          JSON.stringify({
-            lines: scenario.lines,
-            assumptions: scenario.assumptions,
-            simulationYear: scenario.simulationYear
-          });
         const simulatedFingerprint = simulationInputsFingerprint(activeScenario);
+        suppressAutoSimulationSubscription = true;
         set((state) => ({
           scenarios: state.scenarios.map((scenario) =>
             scenario.id === activeScenario.id ? activeScenario : scenario
           )
         }));
+        suppressAutoSimulationSubscription = false;
 
         const finish = (rawResults: SimulationResults) => {
           const results = { ...rawResults, generatedAt: new Date().toISOString() };
@@ -965,15 +1031,21 @@ export const useScenarioStore = create<ScenarioState>()(
             ? `Simulation complete: ${Math.round(results.dailyRidership).toLocaleString()} weekday riders.`
             : 'Simulation complete, but no usable service exists yet. Place at least two stations on one line.';
 
+          let shouldReschedule = false;
           set((state) => {
             const currentScenario = state.scenarios.find((scenario) => scenario.id === activeScenario.id);
             if (!currentScenario) {
               return { isSimulating: false };
             }
             if (simulationInputsFingerprint(currentScenario) !== simulatedFingerprint) {
+              shouldReschedule =
+                getActiveScenario(state).gameMode === 'career' &&
+                getActiveScenario(state).autoSimulationEnabled;
               return {
                 isSimulating: false,
-                simulationNotice: 'The scenario changed during the run. Run the simulation again.'
+                simulationNotice: shouldReschedule
+                  ? 'Updating results for the latest changes…'
+                  : 'The scenario changed during the run. Run the simulation again.'
               };
             }
             return {
@@ -984,6 +1056,11 @@ export const useScenarioStore = create<ScenarioState>()(
               simulationNotice
             };
           });
+          if (shouldReschedule) {
+            scheduleAutoSimulation(0);
+          } else {
+            flushPendingAutoSimulation();
+          }
         };
 
         if (!supportsSimulationWorker()) {
@@ -991,7 +1068,10 @@ export const useScenarioStore = create<ScenarioState>()(
           return;
         }
 
-        set({ isSimulating: true, simulationNotice: 'Simulation running…' });
+        set({
+          isSimulating: true,
+          simulationNotice: source === 'auto' ? 'Updating live results…' : 'Simulation running…'
+        });
         void runSimulationAsync(activeScenario, PENSACOLA_ZONES)
           .then(finish)
           .catch(() => {
@@ -1018,6 +1098,9 @@ export const useScenarioStore = create<ScenarioState>()(
           scenarios:
             persisted.scenarios?.map((scenario) => ({
               ...scenario,
+              gameMode: scenario.gameMode ?? 'sandbox',
+              autoSimulationEnabled:
+                scenario.gameMode === 'career' ? (scenario.autoSimulationEnabled ?? true) : false,
               assumptions: assumptionsWithDefaults(scenario.assumptions)
             })) ?? currentState.scenarios
         };
@@ -1025,6 +1108,29 @@ export const useScenarioStore = create<ScenarioState>()(
     }
   )
 );
+
+useScenarioStore.subscribe((state, previousState) => {
+  if (suppressAutoSimulationSubscription) {
+    return;
+  }
+  const scenario = getActiveScenario(state);
+  const previousScenario = getActiveScenario(previousState);
+  const liveKey =
+    scenario.gameMode === 'career' && scenario.autoSimulationEnabled
+      ? `${scenario.id}|${simulationInputsFingerprint(scenario)}`
+      : undefined;
+  const previousLiveKey =
+    previousScenario.gameMode === 'career' && previousScenario.autoSimulationEnabled
+      ? `${previousScenario.id}|${simulationInputsFingerprint(previousScenario)}`
+      : undefined;
+
+  if (!liveKey) {
+    cancelAutoSimulationTimer();
+    autoSimulationPending = false;
+  } else if (liveKey !== previousLiveKey) {
+    scheduleAutoSimulation();
+  }
+});
 
 export function selectActiveScenario(state: ScenarioState): Scenario {
   return getActiveScenario(state);
