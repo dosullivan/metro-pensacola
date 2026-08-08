@@ -45,6 +45,19 @@ operatingCost =
 
 The base headway is 15 minutes. A 5-minute service costs about 3x the base frequency; a 30-minute service costs about 0.5x.
 
+Capital cost is converted to an equivalent annual amount with the configured asset life and discount rate:
+
+```text
+capitalRecoveryFactor =
+  discountRate * (1 + discountRate)^assetLifeYears
+  / ((1 + discountRate)^assetLifeYears - 1)
+
+annualizedCapitalCost =
+  capitalCost * capitalRecoveryFactor
+```
+
+At a zero discount rate, the recovery factor is `1 / assetLifeYears`.
+
 ## Catchments
 
 Each station has two catchment bands:
@@ -207,9 +220,10 @@ This saturating penalty is bounded at `1 + crowdingTimePenaltyFactor`, preventin
 The simulation reports:
 
 - Construction cost
+- Annualized capital cost
 - Annual operating cost
 - Daily and annual ridership
-- Cost per daily rider
+- Annualized capital plus operating cost per annual rider
 - Fare revenue
 - Operating subsidy
 - Average rider travel-time savings
@@ -229,6 +243,14 @@ Operating subsidy:
 ```text
 max(0, annualOperatingCost - fareRevenue)
 ```
+
+Annualized cost per rider:
+
+```text
+(annualizedCapitalCost + annualOperatingCost) / annualRidership
+```
+
+This combines values on the same annual basis. It is reported as zero when the network serves no riders.
 
 ## Development
 

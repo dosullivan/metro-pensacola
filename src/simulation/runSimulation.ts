@@ -8,6 +8,7 @@ import type {
   ZoneResults
 } from '../types';
 import {
+  calculateAnnualizedCapitalCost,
   calculateAnnualOperatingCost,
   calculateConstructionCost,
   calculateLineMileage,
@@ -185,6 +186,10 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     );
   }
   const constructionCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
+  const annualizedCapitalCost = calculateAnnualizedCapitalCost(
+    constructionCost,
+    scenario.assumptions
+  );
   const annualOperatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
   const modeledDailyRegionalTrips = calculateDailyRegionalTrips(baseZones, zones, scenario.assumptions);
   const dailyRidership = ridership.dailyRidership;
@@ -212,10 +217,13 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     baseDailyRegionalTrips: scenario.assumptions.totalDailyRegionalTrips,
     modeledDailyRegionalTrips,
     constructionCost,
+    annualizedCapitalCost,
     annualOperatingCost,
     dailyRidership,
     annualRidership,
     costPerDailyRider: dailyRidership > 0 ? constructionCost / dailyRidership : 0,
+    annualizedCostPerRider:
+      annualRidership > 0 ? (annualizedCapitalCost + annualOperatingCost) / annualRidership : 0,
     fareRevenue,
     operatingSubsidy: Math.max(0, annualOperatingCost - fareRevenue),
     averageRiderTravelTimeSavings,

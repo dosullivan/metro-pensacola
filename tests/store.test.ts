@@ -76,6 +76,8 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.specialGeneratorRadiusMiles;
     delete legacyAssumptions.specialGeneratorDemandBonus;
     delete legacyAssumptions.uwfCoordinate;
+    delete legacyAssumptions.capitalAssetLifeYears;
+    delete legacyAssumptions.capitalDiscountRate;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -123,6 +125,12 @@ describe('scenario store simulation action', () => {
       DEFAULT_ASSUMPTIONS.specialGeneratorDemandBonus
     );
     expect(mergedScenario.assumptions.uwfCoordinate).toEqual(DEFAULT_ASSUMPTIONS.uwfCoordinate);
+    expect(mergedScenario.assumptions.capitalAssetLifeYears).toBe(
+      DEFAULT_ASSUMPTIONS.capitalAssetLifeYears
+    );
+    expect(mergedScenario.assumptions.capitalDiscountRate).toBe(
+      DEFAULT_ASSUMPTIONS.capitalDiscountRate
+    );
   });
 
   it('shows an explicit notice when there is no usable service', () => {

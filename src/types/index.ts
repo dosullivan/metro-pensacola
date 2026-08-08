@@ -101,6 +101,8 @@ export interface SimulationAssumptions {
   carCostPerMile: number;
   capitalBudget: number;
   annualOperatingBudget: number;
+  capitalAssetLifeYears: number;
+  capitalDiscountRate: number;
   totalDailyRegionalTrips: number;
   gravityDistanceExponent: number;
   minimumGravityDistanceMiles: number;
@@ -194,10 +196,12 @@ export interface SimulationResults {
   baseDailyRegionalTrips: number;
   modeledDailyRegionalTrips: number;
   constructionCost: number;
+  annualizedCapitalCost: number;
   annualOperatingCost: number;
   dailyRidership: number;
   annualRidership: number;
   costPerDailyRider: number;
+  annualizedCostPerRider: number;
   fareRevenue: number;
   operatingSubsidy: number;
   averageRiderTravelTimeSavings: number;

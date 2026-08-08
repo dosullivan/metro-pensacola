@@ -57,6 +57,8 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   carCostPerMile: 0.35,
   capitalBudget: 3_000_000_000,
   annualOperatingBudget: 75_000_000,
+  capitalAssetLifeYears: 30,
+  capitalDiscountRate: 0.04,
   totalDailyRegionalTrips: 185_000,
   gravityDistanceExponent: 1.65,
   minimumGravityDistanceMiles: 0.75,

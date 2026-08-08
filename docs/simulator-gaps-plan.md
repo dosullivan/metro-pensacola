@@ -80,6 +80,8 @@ Status: completed. Accessibility now decays smoothly around the configured midpo
 - Stretch: logit path spreading across near-equal paths (parallel lines currently winner-take-all).
 - Stretch: area-weighted zone catchments (needs polygons in the sim data path; cheap alternative is distance-decay weighting of centroid contributions).
 
+Status: the required annualized cost-per-rider metric is completed using configurable asset-life and discount-rate assumptions. The two items explicitly labeled Stretch remain optional follow-up work.
+
 ## Out of scope for this branch
 
 Park-and-ride / feeder access modeling (deserves its own design), Playwright map tests, bundle-size code-splitting.

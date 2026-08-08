@@ -4,7 +4,13 @@ import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
 import { accessibilityWeight, calculateAccessibilityScores } from '../src/simulation/accessibility';
 import { calculateStationCatchment } from '../src/simulation/catchment';
-import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
+import {
+  averageWaitTime,
+  calculateAnnualizedCapitalCost,
+  calculateConstructionCost,
+  calculateLineMileage,
+  capitalRecoveryFactor
+} from '../src/simulation/costs';
 import { calculateDailyRegionalTrips, createDemandMatrix } from '../src/simulation/demand';
 import { applyDevelopmentGrowth, projectDevelopment } from '../src/simulation/development';
 import { distanceMiles, lineMileage } from '../src/simulation/geo';
@@ -149,6 +155,21 @@ describe('simulation primitives', () => {
       calculateLineMileage(line) * assumptions.technologies.brt.capitalCostPerMile +
       line.stations.length * assumptions.technologies.brt.stationCost;
     expect(calculateConstructionCost(line, assumptions)).toBeCloseTo(expected, 2);
+  });
+
+  it('annualizes capital cost with the configured asset life and discount rate', () => {
+    const assumptions = cloneAssumptions();
+    const constructionCost = 1_000_000_000;
+    const expectedFactor =
+      assumptions.capitalDiscountRate *
+      (1 + assumptions.capitalDiscountRate) ** assumptions.capitalAssetLifeYears /
+      ((1 + assumptions.capitalDiscountRate) ** assumptions.capitalAssetLifeYears - 1);
+
+    expect(capitalRecoveryFactor(30, 0)).toBeCloseTo(1 / 30, 10);
+    expect(calculateAnnualizedCapitalCost(constructionCost, assumptions)).toBeCloseTo(
+      constructionCost * expectedFactor,
+      6
+    );
   });
 
   it('calculates station catchments for half-mile and one-mile bands', () => {
@@ -898,6 +919,23 @@ describe('development and deterministic runs', () => {
     const resultA = runSimulation(scenarioA, PENSACOLA_ZONES);
     const resultB = runSimulation(scenarioB, PENSACOLA_ZONES);
     expect(resultA).toEqual(resultB);
+  });
+
+  it('reports capital plus operating cost per annual rider', () => {
+    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+
+    expect(result.annualizedCapitalCost).toBeGreaterThan(0);
+    expect(result.annualizedCostPerRider).toBeCloseTo(
+      (result.annualizedCapitalCost + result.annualOperatingCost) / result.annualRidership,
+      8
+    );
+  });
+
+  it('reports zero annualized cost per rider when no riders are served', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+
+    expect(runSimulation(scenario, testZones).annualizedCostPerRider).toBe(0);
   });
 
   it('reuses the first model pass for present-day results', () => {
