@@ -3,6 +3,7 @@ import maplibregl, { Map as LibreMap, Marker } from 'maplibre-gl';
 import { circle } from '@turf/turf';
 import { PENSACOLA_CENTER } from '../../data/pensacola/bounds';
 import { PENSACOLA_ZONES } from '../../data/pensacola/zones';
+import { isLineOpen } from '../../data/gameplay';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import {
   buildRoadNetwork,
@@ -146,7 +147,7 @@ function zoneFeatures(
   };
 }
 
-function lineFeatures(lines: TransitLine[]): GeoJSON.FeatureCollection {
+function lineFeatures(lines: TransitLine[], simulationYear: number, careerMode: boolean): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: lines
@@ -156,7 +157,8 @@ function lineFeatures(lines: TransitLine[]): GeoJSON.FeatureCollection {
         properties: {
           id: line.id,
           name: line.name,
-          color: line.color
+          color: line.color,
+          underConstruction: careerMode && !isLineOpen(line, simulationYear)
         },
         geometry: {
           type: 'LineString',
@@ -263,6 +265,7 @@ function addMapSourcesAndLayers(map: LibreMap) {
       id: 'transit-lines-casing',
       type: 'line',
       source: 'transit-lines',
+      filter: ['==', ['get', 'underConstruction'], false],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': 'rgba(15, 23, 42, 0.9)',
@@ -273,11 +276,25 @@ function addMapSourcesAndLayers(map: LibreMap) {
       id: 'transit-lines',
       type: 'line',
       source: 'transit-lines',
+      filter: ['==', ['get', 'underConstruction'], false],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': ['get', 'color'],
         'line-width': 5,
         'line-opacity': 0.95
+      }
+    });
+    map.addLayer({
+      id: 'transit-lines-construction',
+      type: 'line',
+      source: 'transit-lines',
+      filter: ['==', ['get', 'underConstruction'], true],
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 5,
+        'line-opacity': 0.7,
+        'line-dasharray': [1.5, 1.5]
       }
     });
   }
@@ -379,12 +396,17 @@ export function TransitMap() {
   const sourceData = useMemo(
     () => ({
       zones: zoneFeatures(PENSACOLA_ZONES, scenario, overlays),
-      lines: lineFeatures(scenario.lines),
+      lines: lineFeatures(scenario.lines, scenario.simulationYear, scenario.gameMode === 'career'),
       corridors:
         roadSnapEnabled && osmCorridors
           ? (osmCorridors as GeoJSON.FeatureCollection)
           : emptyFeatureCollection(),
-      catchments: catchmentFeatures(scenario.lines, overlays.catchments)
+      catchments: catchmentFeatures(
+        scenario.lines.filter(
+          (line) => scenario.gameMode !== 'career' || isLineOpen(line, scenario.simulationYear)
+        ),
+        overlays.catchments
+      )
     }),
     [scenario, overlays, roadSnapEnabled, osmCorridors]
   );
@@ -489,9 +511,9 @@ export function TransitMap() {
       }
 
       const features = map.queryRenderedFeatures(event.point, {
-        layers: ['transit-lines', 'zones-fill']
+        layers: ['transit-lines', 'transit-lines-construction', 'zones-fill']
       });
-      const lineFeature = features.find((feature) => feature.layer.id === 'transit-lines');
+      const lineFeature = features.find((feature) => feature.layer.id.startsWith('transit-lines'));
       if (lineFeature?.properties?.id) {
         const lineId = String(lineFeature.properties.id);
         selectLine(lineId);
@@ -552,7 +574,7 @@ export function TransitMap() {
         );
         element.className = `station-marker${station.id === selectedStationId ? ' is-selected' : ''}${
           transferPartners.length > 0 ? ' is-transfer' : ''
-        }`;
+        }${scenario.gameMode === 'career' && !isLineOpen(line, scenario.simulationYear) ? ' is-construction' : ''}`;
         element.style.setProperty('--station-color', line.color);
         element.title =
           transferPartners.length > 0
@@ -580,6 +602,8 @@ export function TransitMap() {
   }, [
     mode,
     scenario.lines,
+    scenario.gameMode,
+    scenario.simulationYear,
     selectedLineId,
     selectedStationId,
     selectLine,

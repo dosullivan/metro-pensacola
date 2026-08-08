@@ -1,4 +1,4 @@
-import { Copy, FilePlus2, GitCompareArrows, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, Clock3, Copy, FilePlus2, GitCompareArrows, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { calculateScenarioCapitalCost } from '../../simulation/costs';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import { formatCurrency, formatNumber } from '../../utils/format';
@@ -22,6 +22,9 @@ export function ScenarioPanel() {
   const renameScenario = useScenarioStore((state) => state.renameScenario);
   const saveScenario = useScenarioStore((state) => state.saveScenario);
   const setSimulationYear = useScenarioStore((state) => state.setSimulationYear);
+  const advanceYear = useScenarioStore((state) => state.advanceYear);
+  const resolveOperatingDeficit = useScenarioStore((state) => state.resolveOperatingDeficit);
+  const isSimulating = useScenarioStore((state) => state.isSimulating);
   const setScenarioGameMode = useScenarioStore((state) => state.setScenarioGameMode);
   const toggleBudgetLimits = useScenarioStore((state) => state.toggleBudgetLimits);
   const toggleScenarioComparison = useScenarioStore((state) => state.toggleScenarioComparison);
@@ -83,17 +86,57 @@ export function ScenarioPanel() {
         </button>
       </div>
 
-      <div className="segmented year-tabs">
-        {yearOptions.map((option) => (
+      {scenario.gameMode === 'sandbox' ? (
+        <div className="segmented year-tabs">
+          {yearOptions.map((option) => (
+            <button
+              key={option.value}
+              className={scenario.simulationYear === option.value ? 'active' : ''}
+              onClick={() => setSimulationYear(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="career-clock">
+          <div>
+            <span>Career Year</span>
+            <strong>{scenario.simulationYear}</strong>
+            <small>{formatCurrency(scenario.career?.cumulativeOperatingSubsidy ?? 0)} total subsidy</small>
+          </div>
           <button
-            key={option.value}
-            className={scenario.simulationYear === option.value ? 'active' : ''}
-            onClick={() => setSimulationYear(option.value)}
+            className="command primary"
+            disabled={isSimulating || Boolean(scenario.career?.pendingOperatingDeficit)}
+            onClick={advanceYear}
           >
-            {option.label}
+            <Clock3 size={16} />
+            Advance Year
           </button>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {scenario.career?.pendingOperatingDeficit ? (
+        <div className="deficit-choice">
+          <div className="panel-title small">
+            <AlertTriangle size={15} />
+            Operating Deficit
+          </div>
+          <p>
+            Year {scenario.career.pendingOperatingDeficit.year} exceeds the subsidy cap by{' '}
+            {formatCurrency(scenario.career.pendingOperatingDeficit.amount)}. Choose a response.
+          </p>
+          <button className="command" onClick={() => resolveOperatingDeficit('cut-frequency')}>
+            Cut service frequency
+          </button>
+          <button className="command" onClick={() => resolveOperatingDeficit('raise-fare')}>
+            Raise fare by $0.50
+          </button>
+          <button className="command danger" onClick={() => resolveOperatingDeficit('emergency-grant')}>
+            Emergency grant (lose 2× deficit in capital)
+          </button>
+        </div>
+      ) : null}
 
       {scenario.gameMode === 'sandbox' ? (
         <button className={scenario.budgetLimitsEnabled ? 'toggle wide active' : 'toggle wide'} onClick={toggleBudgetLimits}>

@@ -3,7 +3,13 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 import { DEFAULT_ASSUMPTIONS } from '../data/assumptions';
 import {
   DEMOLITION_REFUND_FRACTION,
+  EMERGENCY_GRANT_CAPITAL_PENALTY_MULTIPLIER,
+  FARE_INCREASE_PER_DEFICIT_CHOICE,
+  careerProgressWithDefaults,
   createCareerProgress,
+  isLineOpen,
+  lineOpeningYear,
+  scheduleCareerConstruction,
   unlockFundingMilestones
 } from '../data/gameplay';
 import { DEMO_SCENARIO } from '../data/pensacola/demoScenario';
@@ -24,6 +30,7 @@ import type {
   TransitLine,
   TransitTechnologyId,
   FrequencyMinutes,
+  OperatingDeficitChoice,
   SimulationResults,
   SimulationZone
 } from '../types';
@@ -36,6 +43,7 @@ export type InspectedFeature =
 
 const STATION_VERTEX_PULL_DISTANCE_FEET = 150;
 const SAME_COORDINATE_DISTANCE_FEET = 20;
+const CAREER_HEADWAYS: FrequencyMinutes[] = [5, 10, 15, 20, 30];
 
 interface ScenarioState {
   scenarios: Scenario[];
@@ -67,6 +75,8 @@ interface ScenarioState {
   renameScenario: (scenarioId: string, name: string) => void;
   saveScenario: () => void;
   setSimulationYear: (year: number) => void;
+  advanceYear: () => void;
+  resolveOperatingDeficit: (choice: OperatingDeficitChoice) => void;
   setScenarioGameMode: (mode: ScenarioGameMode) => void;
   toggleAutoSimulation: () => void;
   toggleBudgetLimits: () => void;
@@ -140,6 +150,11 @@ function getScenarioStorage(): StateStorage {
 
 function cloneScenario(scenario: Scenario): Scenario {
   return JSON.parse(JSON.stringify(scenario)) as Scenario;
+}
+
+function nextSlowerHeadway(headway: FrequencyMinutes): FrequencyMinutes {
+  const index = CAREER_HEADWAYS.indexOf(headway);
+  return CAREER_HEADWAYS[Math.min(CAREER_HEADWAYS.length - 1, Math.max(0, index) + 1)];
 }
 
 function assumptionsWithDefaults(
@@ -242,11 +257,20 @@ function applyConstructionUpdate(
   updater: (scenario: Scenario) => Scenario
 ): { update: Partial<ScenarioState>; applied: boolean } {
   const activeScenario = getActiveScenario(state);
-  const nextScenario = updater(activeScenario);
+  let nextScenario = updater(activeScenario);
   if (activeScenario.gameMode !== 'career' || !activeScenario.career) {
     return { update: updateActiveScenario(state, () => nextScenario), applied: true };
   }
   const career = activeScenario.career;
+  nextScenario = {
+    ...nextScenario,
+    lines: scheduleCareerConstruction(
+      activeScenario.lines,
+      nextScenario.lines,
+      activeScenario.simulationYear,
+      activeScenario.assumptions
+    )
+  };
 
   const previousCost = calculateScenarioCapitalCost(activeScenario.lines, activeScenario.assumptions);
   const nextCost = calculateScenarioCapitalCost(nextScenario.lines, nextScenario.assumptions);
@@ -603,15 +627,128 @@ export const useScenarioStore = create<ScenarioState>()(
             results: undefined
           }))
         ),
+      advanceYear: () =>
+        set((state) => {
+          const scenario = getActiveScenario(state);
+          if (scenario.gameMode !== 'career' || !scenario.career) return {};
+          if (state.isSimulating) {
+            return { simulationNotice: 'Wait for the current simulation before advancing the year.' };
+          }
+          if (scenario.career.pendingOperatingDeficit) {
+            return { simulationNotice: 'Resolve the operating deficit before advancing.' };
+          }
+          if (!scenario.results) {
+            return { simulationNotice: 'Run the current year before advancing.' };
+          }
+          const annualSubsidy = scenario.results.operatingSubsidy;
+          const amount = annualSubsidy - scenario.career.annualOperatingSubsidyCap;
+          if (amount > 0.01) {
+            return {
+              ...updateActiveScenario(state, (current) => ({
+                ...current,
+                career: {
+                  ...scenario.career!,
+                  pendingOperatingDeficit: {
+                    year: scenario.simulationYear,
+                    amount,
+                    annualSubsidy
+                  }
+                }
+              })),
+              simulationNotice: `Operating subsidy exceeds the annual cap by $${Math.ceil(amount).toLocaleString()}. Choose a response.`
+            };
+          }
+          return {
+            ...updateActiveScenario(state, (current) => ({
+              ...current,
+              simulationYear: current.simulationYear + 1,
+              results: undefined,
+              career: {
+                ...scenario.career!,
+                cumulativeOperatingSubsidy:
+                  scenario.career!.cumulativeOperatingSubsidy + annualSubsidy
+              }
+            })),
+            simulationNotice: `Advanced to Year ${scenario.simulationYear + 1}.`
+          };
+        }),
+      resolveOperatingDeficit: (choice) =>
+        set((state) => {
+          const scenario = getActiveScenario(state);
+          const career = scenario.career;
+          const deficit = career?.pendingOperatingDeficit;
+          if (scenario.gameMode !== 'career' || !career || !deficit) return {};
+
+          if (choice === 'cut-frequency') {
+            const lines = scenario.lines.map((line) =>
+              isLineOpen(line, scenario.simulationYear)
+                ? { ...line, headwayMinutes: nextSlowerHeadway(line.headwayMinutes) }
+                : line
+            );
+            if (lines.every((line, index) => line.headwayMinutes === scenario.lines[index].headwayMinutes)) {
+              return { simulationNotice: 'All open lines are already at the lowest service frequency.' };
+            }
+            return {
+              ...updateActiveScenario(state, (current) => ({
+                ...current,
+                lines,
+                results: undefined,
+                career: { ...career, pendingOperatingDeficit: undefined }
+              })),
+              simulationNotice: 'Service frequencies reduced. Updating the operating forecast…'
+            };
+          }
+
+          if (choice === 'raise-fare') {
+            return {
+              ...updateActiveScenario(state, (current) => ({
+                ...current,
+                assumptions: {
+                  ...current.assumptions,
+                  defaultFare: current.assumptions.defaultFare + FARE_INCREASE_PER_DEFICIT_CHOICE
+                },
+                results: undefined,
+                career: { ...career, pendingOperatingDeficit: undefined }
+              })),
+              simulationNotice: 'Fare increased by $0.50. Updating the operating forecast…'
+            };
+          }
+
+          const capitalPenalty = deficit.amount * EMERGENCY_GRANT_CAPITAL_PENALTY_MULTIPLIER;
+          return {
+            ...updateActiveScenario(state, (current) => ({
+              ...current,
+              simulationYear: current.simulationYear + 1,
+              results: undefined,
+              career: {
+                ...career,
+                remainingCapital: Math.max(0, career.remainingCapital - capitalPenalty),
+                cumulativeOperatingSubsidy:
+                  career.cumulativeOperatingSubsidy + deficit.annualSubsidy,
+                pendingOperatingDeficit: undefined
+              }
+            })),
+            simulationNotice: `Emergency operating grant accepted; $${Math.ceil(capitalPenalty).toLocaleString()} removed from capital funds.`
+          };
+        }),
       setScenarioGameMode: (gameMode) =>
         set((state) => {
           const scenario = getActiveScenario(state);
           if (scenario.gameMode === gameMode) return {};
           if (gameMode === 'career') {
             const repairedScenario = scenarioWithGeometryOnlyLinesRepaired(scenario).scenario;
-            const existingCost = calculateScenarioCapitalCost(repairedScenario.lines, repairedScenario.assumptions);
+            const lines = repairedScenario.lines.map((line) =>
+              line.constructionStartedYear === undefined
+                ? line
+                : {
+                    ...line,
+                    openingYear: lineOpeningYear(line, line.constructionStartedYear)
+                  }
+            );
+            const existingCost = calculateScenarioCapitalCost(lines, repairedScenario.assumptions);
             return updateActiveScenario(state, (current) => ({
               ...repairedScenario,
+              lines,
               gameMode: 'career',
               autoSimulationEnabled: true,
               budgetLimitsEnabled: true,
@@ -1084,9 +1221,29 @@ export const useScenarioStore = create<ScenarioState>()(
 
         const finish = (rawResults: SimulationResults) => {
           const results = { ...rawResults, generatedAt: new Date().toISOString() };
-          const hasUsableService = activeScenario.lines.some((line) => line.stations.length >= 2);
+          const hasUsableService = activeScenario.lines.some(
+            (line) =>
+              (activeScenario.gameMode !== 'career' ||
+                isLineOpen(line, activeScenario.simulationYear)) &&
+              line.stations.length >= 2
+          );
+          const nextOpeningYear = activeScenario.lines
+            .filter(
+              (line) =>
+                activeScenario.gameMode === 'career' &&
+                !isLineOpen(line, activeScenario.simulationYear) &&
+                line.stations.length >= 2 &&
+                line.openingYear !== undefined
+            )
+            .reduce<number | undefined>(
+              (earliest, line) =>
+                earliest === undefined ? line.openingYear : Math.min(earliest, line.openingYear!),
+              undefined
+            );
           const simulationNotice = hasUsableService
             ? `Simulation complete: ${Math.round(results.dailyRidership).toLocaleString()} weekday riders.`
+            : nextOpeningYear !== undefined
+              ? `Simulation complete: the next line opens in Year ${nextOpeningYear}.`
             : 'Simulation complete, but no usable service exists yet. Place at least two stations on one line.';
 
           let shouldReschedule = false;
@@ -1190,7 +1347,7 @@ export const useScenarioStore = create<ScenarioState>()(
                 assumptions,
                 career:
                   gameMode === 'career'
-                    ? (scenario.career ?? createCareerProgress(capitalCost))
+                    ? careerProgressWithDefaults(scenario.career, capitalCost)
                     : undefined
               };
             }) ?? currentState.scenarios

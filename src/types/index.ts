@@ -48,6 +48,8 @@ export interface TransitLine {
   headwayMinutes: FrequencyMinutes;
   geometry: Coordinate[];
   stations: Station[];
+  constructionStartedYear?: number;
+  openingYear?: number;
 }
 
 export interface SimulationZone {
@@ -161,8 +163,18 @@ export interface Scenario {
 export interface CareerProgress {
   remainingCapital: number;
   annualOperatingSubsidyCap: number;
+  cumulativeOperatingSubsidy: number;
   unlockedMilestoneIds: string[];
+  pendingOperatingDeficit?: OperatingDeficit;
 }
+
+export interface OperatingDeficit {
+  year: number;
+  amount: number;
+  annualSubsidy: number;
+}
+
+export type OperatingDeficitChoice = 'cut-frequency' | 'raise-fare' | 'emergency-grant';
 
 export interface LineResults {
   lineId: string;
@@ -175,6 +187,8 @@ export interface LineResults {
   weekdayRidership: number;
   ridersPerMile: number;
   crowdingMultiplier: number;
+  isOpen: boolean;
+  openingYear?: number;
 }
 
 export interface StationResults {

@@ -15,7 +15,7 @@ import {
 import { useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { FREQUENCIES } from '../../data/assumptions';
-import { FUNDING_MILESTONES, fundingMilestoneValue } from '../../data/gameplay';
+import { FUNDING_MILESTONES, fundingMilestoneValue, isLineOpen } from '../../data/gameplay';
 import { calculateAnnualOperatingCost, calculateConstructionCost, calculateLineMileage, calculateScenarioCapitalCost, calculateScenarioOperatingCost } from '../../simulation/costs';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import type { FrequencyMinutes, TransitTechnologyId } from '../../types';
@@ -60,7 +60,12 @@ export function BuildControls() {
   const snapTechnology = selectedLine?.technology ?? selectedTechnology;
   const canUseRoadSnap = snapTechnology === 'brt' || snapTechnology === 'light-rail';
   const capitalCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
-  const operatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
+  const operatingCost = calculateScenarioOperatingCost(
+    scenario.lines.filter(
+      (line) => scenario.gameMode !== 'career' || isLineOpen(line, scenario.simulationYear)
+    ),
+    scenario.assumptions
+  );
   const remainingCapital = scenario.career?.remainingCapital ?? scenario.assumptions.capitalBudget - capitalCost;
   const operatingSubsidy = scenario.results?.operatingSubsidy ?? operatingCost;
   const operatingLimit = scenario.career?.annualOperatingSubsidyCap ?? scenario.assumptions.annualOperatingBudget;
@@ -217,7 +222,11 @@ export function BuildControls() {
             }}
           >
             <span>{line.name}</span>
-            <small>{formatMiles(calculateLineMileage(line))}</small>
+            <small>
+              {scenario.gameMode === 'career' && !isLineOpen(line, scenario.simulationYear) && line.openingYear !== undefined
+                ? `Opens Year ${line.openingYear}`
+                : formatMiles(calculateLineMileage(line))}
+            </small>
           </button>
         ))}
       </div>
@@ -228,6 +237,9 @@ export function BuildControls() {
             <SlidersHorizontal size={15} />
             <span>Selected Line</span>
           </div>
+          {scenario.gameMode === 'career' && !isLineOpen(selectedLine, scenario.simulationYear) && selectedLine.openingYear !== undefined ? (
+            <div className="construction-notice">Under construction · opens Year {selectedLine.openingYear}</div>
+          ) : null}
           <input value={selectedLine.name} onChange={(event) => renameLine(selectedLine.id, event.target.value)} />
           <div className="two-col">
             <label>

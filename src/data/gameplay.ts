@@ -1,8 +1,23 @@
-import type { CareerProgress, SimulationResults } from '../types';
+import type {
+  CareerProgress,
+  SimulationResults,
+  TransitLine,
+  TransitTechnologyId
+} from '../types';
+import { calculateConstructionCost, calculateLineMileage } from '../simulation/costs';
 
 export const CAREER_STARTING_CAPITAL = 500_000_000;
 export const CAREER_ANNUAL_OPERATING_SUBSIDY_CAP = 25_000_000;
 export const DEMOLITION_REFUND_FRACTION = 0.5;
+export const FARE_INCREASE_PER_DEFICIT_CHOICE = 0.5;
+export const EMERGENCY_GRANT_CAPITAL_PENALTY_MULTIPLIER = 2;
+
+export const CONSTRUCTION_MILES_PER_YEAR: Record<TransitTechnologyId, number> = {
+  brt: 10,
+  'light-rail': 5,
+  'elevated-metro': 3,
+  subway: 1.5
+};
 
 export type FundingMilestoneMetric =
   | 'weekday-ridership'
@@ -49,8 +64,64 @@ export function createCareerProgress(existingCapitalCost = 0): CareerProgress {
   return {
     remainingCapital: Math.max(0, CAREER_STARTING_CAPITAL - existingCapitalCost),
     annualOperatingSubsidyCap: CAREER_ANNUAL_OPERATING_SUBSIDY_CAP,
+    cumulativeOperatingSubsidy: 0,
     unlockedMilestoneIds: []
   };
+}
+
+export function careerProgressWithDefaults(
+  progress: Partial<CareerProgress> | undefined,
+  existingCapitalCost = 0
+): CareerProgress {
+  return { ...createCareerProgress(existingCapitalCost), ...progress };
+}
+
+export function constructionDurationYears(line: TransitLine): number {
+  return Math.max(1, Math.ceil(calculateLineMileage(line) / CONSTRUCTION_MILES_PER_YEAR[line.technology]));
+}
+
+export function lineOpeningYear(line: TransitLine, startYear: number): number {
+  return startYear + constructionDurationYears(line);
+}
+
+export function isLineOpen(line: TransitLine, simulationYear: number): boolean {
+  return line.openingYear === undefined || simulationYear >= line.openingYear;
+}
+
+export function scheduleCareerConstruction(
+  previousLines: TransitLine[],
+  nextLines: TransitLine[],
+  simulationYear: number,
+  assumptions: Parameters<typeof calculateConstructionCost>[1]
+): TransitLine[] {
+  const previousById = new Map(previousLines.map((line) => [line.id, line]));
+  return nextLines.map((line) => {
+    const previous = previousById.get(line.id);
+    if (!previous) {
+      return {
+        ...line,
+        constructionStartedYear: simulationYear,
+        openingYear: lineOpeningYear(line, simulationYear)
+      };
+    }
+    const previousCost = calculateConstructionCost(previous, assumptions);
+    const nextCost = calculateConstructionCost(line, assumptions);
+    const requiresConstruction =
+      nextCost > previousCost + 0.01 || previous.technology !== line.technology;
+    const changesActiveConstruction =
+      !isLineOpen(previous, simulationYear) && line !== previous;
+    if (!requiresConstruction && !changesActiveConstruction) return line;
+
+    const constructionStartedYear =
+      !isLineOpen(previous, simulationYear) && previous.constructionStartedYear !== undefined
+        ? previous.constructionStartedYear
+        : simulationYear;
+    return {
+      ...line,
+      constructionStartedYear,
+      openingYear: lineOpeningYear(line, constructionStartedYear)
+    };
+  });
 }
 
 export function fundingMilestoneValue(

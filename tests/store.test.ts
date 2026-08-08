@@ -4,7 +4,7 @@ import { createCareerProgress } from '../src/data/gameplay';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { snapCoordinateToLineGeometry } from '../src/simulation/snapping';
 import { selectActiveScenario, useScenarioStore } from '../src/store/scenarioStore';
-import type { Scenario } from '../src/types';
+import type { Scenario, SimulationResults } from '../src/types';
 
 function cloneScenario(scenario: Scenario): Scenario {
   return JSON.parse(JSON.stringify(scenario)) as Scenario;
@@ -151,7 +151,9 @@ describe('scenario store simulation action', () => {
     scenario.career = {
       ...createCareerProgress(),
       remainingCapital: 123_456_789,
-      unlockedMilestoneIds: ['first-300-riders']
+      cumulativeOperatingSubsidy: 42_000_000,
+      unlockedMilestoneIds: ['first-300-riders'],
+      pendingOperatingDeficit: { year: 3, amount: 2_000_000, annualSubsidy: 27_000_000 }
     };
     const currentState = useScenarioStore.getState();
     const merged = useScenarioStore.persist.getOptions().merge?.(
@@ -404,6 +406,91 @@ describe('scenario store simulation action', () => {
     useScenarioStore.getState().removeSelected();
 
     expect(selectActiveScenario(useScenarioStore.getState()).career?.remainingCapital).toBe(498_500_000);
+  });
+
+  it('accrues annual subsidy once and advances the Career clock', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.gameMode = 'career';
+    scenario.autoSimulationEnabled = false;
+    scenario.career = { ...createCareerProgress(), annualOperatingSubsidyCap: 20_000_000 };
+    scenario.results = { operatingSubsidy: 12_000_000 } as SimulationResults;
+    resetStore(scenario);
+
+    useScenarioStore.getState().advanceYear();
+
+    const active = selectActiveScenario(useScenarioStore.getState());
+    expect(active.simulationYear).toBe(1);
+    expect(active.career?.cumulativeOperatingSubsidy).toBe(12_000_000);
+    expect(active.results).toBeUndefined();
+  });
+
+  it('stops on an operating deficit and applies deterministic choices', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.gameMode = 'career';
+    scenario.autoSimulationEnabled = false;
+    scenario.career = { ...createCareerProgress(), annualOperatingSubsidyCap: 10_000_000 };
+    scenario.results = { operatingSubsidy: 14_000_000 } as SimulationResults;
+    resetStore(scenario);
+
+    useScenarioStore.getState().advanceYear();
+    let active = selectActiveScenario(useScenarioStore.getState());
+    expect(active.simulationYear).toBe(0);
+    expect(active.career?.pendingOperatingDeficit?.amount).toBe(4_000_000);
+
+    useScenarioStore.getState().resolveOperatingDeficit('raise-fare');
+    active = selectActiveScenario(useScenarioStore.getState());
+    expect(active.assumptions.defaultFare).toBe(DEFAULT_ASSUMPTIONS.defaultFare + 0.5);
+    expect(active.career?.pendingOperatingDeficit).toBeUndefined();
+    expect(active.results).toBeUndefined();
+  });
+
+  it('can resolve a deficit by reducing every open line one frequency step', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.gameMode = 'career';
+    scenario.autoSimulationEnabled = false;
+    scenario.career = {
+      ...createCareerProgress(),
+      pendingOperatingDeficit: { year: 0, amount: 4_000_000, annualSubsidy: 14_000_000 }
+    };
+    resetStore(scenario);
+    const previousHeadways = scenario.lines.map((line) => line.headwayMinutes);
+
+    useScenarioStore.getState().resolveOperatingDeficit('cut-frequency');
+
+    const active = selectActiveScenario(useScenarioStore.getState());
+    expect(active.lines.map((line) => line.headwayMinutes)).not.toEqual(previousHeadways);
+    expect(active.career?.pendingOperatingDeficit).toBeUndefined();
+    expect(active.results).toBeUndefined();
+  });
+
+  it('accepts an emergency grant with the same reproducible financial result', () => {
+    const runSequence = () => {
+      const scenario = cloneScenario(DEMO_SCENARIO);
+      scenario.gameMode = 'career';
+      scenario.autoSimulationEnabled = false;
+      scenario.career = { ...createCareerProgress(), annualOperatingSubsidyCap: 10_000_000 };
+      scenario.results = { operatingSubsidy: 14_000_000 } as SimulationResults;
+      resetStore(scenario);
+      useScenarioStore.getState().advanceYear();
+      useScenarioStore.getState().resolveOperatingDeficit('emergency-grant');
+      useScenarioStore.setState((state) => ({
+        scenarios: state.scenarios.map((candidate) =>
+          candidate.id === scenario.id
+            ? { ...candidate, results: { operatingSubsidy: 5_000_000 } as SimulationResults }
+            : candidate
+        )
+      }));
+      useScenarioStore.getState().advanceYear();
+      const active = selectActiveScenario(useScenarioStore.getState());
+      return {
+        year: active.simulationYear,
+        capital: active.career?.remainingCapital,
+        subsidy: active.career?.cumulativeOperatingSubsidy
+      };
+    };
+
+    expect(runSequence()).toEqual(runSequence());
+    expect(runSequence()).toEqual({ year: 2, capital: 492_000_000, subsidy: 19_000_000 });
   });
 
   it('creates stations when drawing a route in the default route build mode', () => {

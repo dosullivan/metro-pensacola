@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
+import { createCareerProgress } from '../src/data/gameplay';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
 import { accessibilityWeight, calculateAccessibilityScores } from '../src/simulation/accessibility';
@@ -156,6 +157,35 @@ describe('simulation primitives', () => {
       calculateLineMileage(line) * assumptions.technologies.brt.capitalCostPerMile +
       line.stations.length * assumptions.technologies.brt.stationCost;
     expect(calculateConstructionCost(line, assumptions)).toBeCloseTo(expected, 2);
+  });
+
+  it('excludes a line from ridership and operating cost until its opening year', () => {
+    const line = testLine({ constructionStartedYear: 0, openingYear: 2 });
+    const scenario: Scenario = {
+      id: 'construction-timing',
+      name: 'Construction Timing',
+      gameMode: 'career',
+      autoSimulationEnabled: false,
+      lines: [line],
+      assumptions: cloneAssumptions(),
+      simulationYear: 1,
+      budgetLimitsEnabled: true,
+      career: createCareerProgress()
+    };
+
+    const beforeOpening = runSimulation(scenario, testZones);
+    const afterOpening = runSimulation({ ...scenario, simulationYear: 2 }, testZones);
+    const sandbox = runSimulation({ ...scenario, gameMode: 'sandbox' }, testZones);
+
+    expect(beforeOpening.dailyRidership).toBe(0);
+    expect(beforeOpening.annualOperatingCost).toBe(0);
+    expect(beforeOpening.lineResults[0].isOpen).toBe(false);
+    expect(beforeOpening.messages[0].id).toBe('network-under-construction');
+    expect(afterOpening.dailyRidership).toBeGreaterThan(0);
+    expect(afterOpening.annualOperatingCost).toBeGreaterThan(0);
+    expect(afterOpening.lineResults[0].isOpen).toBe(true);
+    expect(sandbox.dailyRidership).toBeGreaterThan(0);
+    expect(sandbox.lineResults[0].isOpen).toBe(true);
   });
 
   it('annualizes capital cost with the configured asset life and discount rate', () => {

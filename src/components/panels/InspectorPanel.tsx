@@ -1,5 +1,6 @@
 import { Info, MapPin, Route } from 'lucide-react';
 import { PENSACOLA_ZONES } from '../../data/pensacola/zones';
+import { isLineOpen } from '../../data/gameplay';
 import { calculateStationCatchment } from '../../simulation/catchment';
 import { calculateConstructionCost, calculateLineMileage } from '../../simulation/costs';
 import { transferPartnersForStation } from '../../simulation/transfers';
@@ -83,6 +84,14 @@ export function InspectorPanel() {
         <>
           <h3>{line.name}</h3>
           <div className="metric-list compact">
+            <div>
+              <span>Status</span>
+              <strong>
+                {scenario.gameMode !== 'career' || isLineOpen(line, scenario.simulationYear)
+                  ? 'Open'
+                  : `Construction · Year ${line.openingYear}`}
+              </strong>
+            </div>
             <div>
               <span>Technology</span>
               <strong>{scenario.assumptions.technologies[line.technology].name}</strong>
