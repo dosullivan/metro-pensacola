@@ -1,5 +1,5 @@
 import type { SimulationAssumptions, SimulationZone, TransitLine } from '../types';
-import { buildTransitGraph, fastestTransitPath } from './routing';
+import { buildTransitGraph, transitTimesFromOrigin } from './routing';
 
 export function calculateAccessibilityScores(
   lines: TransitLine[],
@@ -19,11 +19,12 @@ export function calculateAccessibilityScores(
   for (const origin of zones) {
     let reachableJobs = 0;
     let reachablePopulation = 0;
+    const originPaths = transitTimesFromOrigin(origin.centroid, usableLines, assumptions, graph);
     for (const destination of zones) {
       if (origin.id === destination.id) {
         continue;
       }
-      const path = fastestTransitPath(origin.centroid, destination.centroid, usableLines, assumptions, graph);
+      const path = originPaths.pathTo(destination.centroid);
       if (path && path.totalMinutes <= 30) {
         reachableJobs += destination.jobs;
         reachablePopulation += destination.population;

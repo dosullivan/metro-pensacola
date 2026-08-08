@@ -91,6 +91,8 @@ Transit routing uses Dijkstra over a station graph:
 - Stations within 400 feet receive transfer edges. In build mode, placing or dragging a stop near a stop on another line snaps to that stop location so the transfer is explicit.
 - Transfers add a penalty, and boarding the next line adds its wait time.
 
+Ridership and accessibility run one multi-source, binary-heap Dijkstra search per origin zone and reuse its station paths across all destination zones. Present Day simulations reuse the initial ridership and accessibility pass; future-year simulations run a second pass after applying development growth.
+
 In-vehicle time between adjacent stations currently uses straight-line station distance multiplied by the configured road-circuity factor. It does not follow every vertex of the displayed route polyline. The polyline is used for map rendering and construction mileage, so changing route bends without changing stations can change capital cost without changing ridership.
 
 Transit generalized time:
@@ -187,4 +189,4 @@ The model applies this growth to population, housing units, employment, commerci
 
 ## Runtime Characteristics
 
-Demand and accessibility are evaluated across ordered zone pairs. With 296 zones, a model pass considers about 87,000 origin-destination pairs before filtering for usable transit paths. The simulation currently runs initial and final ridership/accessibility passes so long-range development can feed back into demand. This is deterministic and manageable for the current demonstration network, but it is the main scaling constraint as station and line counts grow.
+Demand and accessibility are evaluated across ordered zone pairs. With 296 zones, a model pass considers about 87,000 origin-destination pairs before filtering for usable transit paths, but transit routing is computed once per origin and reused for its destinations. Future-year simulations run initial and final ridership/accessibility passes so long-range development can feed back into demand; Present Day runs only one pass. The remaining work scales with the number of zone pairs and transit graph size.

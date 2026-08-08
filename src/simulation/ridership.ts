@@ -1,6 +1,6 @@
 import type { SimulationAssumptions, SimulationZone, TransitLine } from '../types';
 import { createDemandMatrix } from './demand';
-import { buildTransitGraph, fastestTransitPath } from './routing';
+import { buildTransitGraph, transitTimesFromOrigin, type TransitOriginPaths } from './routing';
 import { clamp, distanceMiles, minutesForDistance } from './geo';
 
 export interface NetworkRidership {
@@ -63,11 +63,17 @@ export function estimateNetworkRidership(
 
   const graph = buildTransitGraph(usableLines, assumptions);
   const demand = createDemandMatrix(zones, assumptions);
+  const pathsByOrigin = new Map<number, TransitOriginPaths>();
 
   for (const od of demand) {
     const origin = zones[od.originIndex];
     const destination = zones[od.destinationIndex];
-    const path = fastestTransitPath(origin.centroid, destination.centroid, usableLines, assumptions, graph);
+    let originPaths = pathsByOrigin.get(od.originIndex);
+    if (!originPaths) {
+      originPaths = transitTimesFromOrigin(origin.centroid, usableLines, assumptions, graph);
+      pathsByOrigin.set(od.originIndex, originPaths);
+    }
+    const path = originPaths.pathTo(destination.centroid);
     if (!path) {
       continue;
     }

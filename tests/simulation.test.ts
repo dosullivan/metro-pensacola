@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
+import { calculateAccessibilityScores } from '../src/simulation/accessibility';
 import { calculateStationCatchment } from '../src/simulation/catchment';
 import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
 import { projectDevelopment } from '../src/simulation/development';
 import { lineMileage } from '../src/simulation/geo';
 import { estimateNetworkRidership } from '../src/simulation/ridership';
-import { fastestTransitPath } from '../src/simulation/routing';
+import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
 import { runSimulation } from '../src/simulation/runSimulation';
 import {
   buildRoadNetwork,
@@ -265,6 +266,19 @@ describe('routing and ridership', () => {
     expect(path?.totalMinutes).toBeGreaterThan(0);
   });
 
+  it('matches the per-pair routing oracle when paths are cached by origin', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    const lines = scenario.lines;
+    const origin = lines[0].stations[0].coordinate;
+    const graph = buildTransitGraph(lines, scenario.assumptions);
+    const cachedPaths = transitTimesFromOrigin(origin, lines, scenario.assumptions, graph);
+
+    for (const station of lines[0].stations.slice(1)) {
+      const oracle = fastestTransitPath(origin, station.coordinate, lines, scenario.assumptions, graph);
+      expect(cachedPaths.pathTo(station.coordinate)).toEqual(oracle);
+    }
+  });
+
   it('routes through transfer stations between connected lines', () => {
     const assumptions = cloneAssumptions();
     const lineA = testLine({
@@ -468,5 +482,23 @@ describe('development and deterministic runs', () => {
     const resultA = runSimulation(scenarioA, PENSACOLA_ZONES);
     const resultB = runSimulation(scenarioB, PENSACOLA_ZONES);
     expect(resultA).toEqual(resultB);
+  });
+
+  it('reuses the first model pass for present-day results', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.simulationYear = 0;
+    const ridership = estimateNetworkRidership(scenario.lines, testZones, scenario.assumptions);
+    const accessibility = calculateAccessibilityScores(scenario.lines, testZones, scenario.assumptions);
+    const expectedDevelopment = projectDevelopment(
+      testZones,
+      accessibility,
+      ridership.zoneTransitTrips,
+      scenario.assumptions,
+      0
+    );
+    const result = runSimulation(scenario, testZones);
+
+    expect(result.dailyRidership).toBe(ridership.dailyRidership);
+    expect(result.zoneResults).toEqual(expectedDevelopment);
   });
 });

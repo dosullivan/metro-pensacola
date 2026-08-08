@@ -19,6 +19,18 @@ interface CandidateStation {
   accessMinutes: number;
 }
 
+interface DijkstraResult {
+  distances: Map<string, number>;
+  previous: Map<string, PreviousStep>;
+  startForNode: Map<string, CandidateStation>;
+}
+
+interface QueueEntry {
+  node: string;
+  distance: number;
+  sequence: number;
+}
+
 export interface TransitPath {
   totalMinutes: number;
   accessMinutes: number;
@@ -28,6 +40,11 @@ export interface TransitPath {
   stationIds: string[];
   lineIds: string[];
   transferStationIds: string[];
+}
+
+export interface TransitOriginPaths {
+  timesByStationId: ReadonlyMap<string, number>;
+  pathTo: (destination: Coordinate) => TransitPath | undefined;
 }
 
 function baseNode(stationId: string): string {
@@ -146,7 +163,7 @@ export function buildTransitGraph(
 function dijkstra(
   graph: Map<string, GraphEdge[]>,
   starts: CandidateStation[]
-): { distances: Map<string, number>; previous: Map<string, PreviousStep>; startForNode: Map<string, CandidateStation> } {
+): DijkstraResult {
   const distances = new Map<string, number>();
   const previous = new Map<string, PreviousStep>();
   const startForNode = new Map<string, CandidateStation>();
@@ -194,6 +211,98 @@ function dijkstra(
   return { distances, previous, startForNode };
 }
 
+class MinHeap {
+  private readonly entries: QueueEntry[] = [];
+
+  get size(): number {
+    return this.entries.length;
+  }
+
+  push(entry: QueueEntry): void {
+    this.entries.push(entry);
+    let index = this.entries.length - 1;
+    while (index > 0) {
+      const parentIndex = Math.floor((index - 1) / 2);
+      if (this.compare(this.entries[parentIndex], entry) <= 0) {
+        break;
+      }
+      this.entries[index] = this.entries[parentIndex];
+      index = parentIndex;
+    }
+    this.entries[index] = entry;
+  }
+
+  pop(): QueueEntry | undefined {
+    const first = this.entries[0];
+    const last = this.entries.pop();
+    if (!first || !last || this.entries.length === 0) {
+      return first;
+    }
+
+    let index = 0;
+    while (true) {
+      const leftIndex = index * 2 + 1;
+      const rightIndex = leftIndex + 1;
+      if (leftIndex >= this.entries.length) {
+        break;
+      }
+      const smallerChildIndex =
+        rightIndex < this.entries.length && this.compare(this.entries[rightIndex], this.entries[leftIndex]) < 0
+          ? rightIndex
+          : leftIndex;
+      if (this.compare(last, this.entries[smallerChildIndex]) <= 0) {
+        break;
+      }
+      this.entries[index] = this.entries[smallerChildIndex];
+      index = smallerChildIndex;
+    }
+    this.entries[index] = last;
+    return first;
+  }
+
+  private compare(a: QueueEntry, b: QueueEntry): number {
+    return a.distance - b.distance || a.sequence - b.sequence;
+  }
+}
+
+function heapDijkstra(graph: Map<string, GraphEdge[]>, starts: CandidateStation[]): DijkstraResult {
+  const distances = new Map<string, number>();
+  const previous = new Map<string, PreviousStep>();
+  const startForNode = new Map<string, CandidateStation>();
+  const queue = new MinHeap();
+  let sequence = 0;
+
+  for (const start of starts) {
+    const node = baseNode(start.station.id);
+    const current = distances.get(node);
+    if (current === undefined || start.accessMinutes < current) {
+      distances.set(node, start.accessMinutes);
+      startForNode.set(node, start);
+      queue.push({ node, distance: start.accessMinutes, sequence: sequence++ });
+    }
+  }
+
+  while (queue.size > 0) {
+    const current = queue.pop();
+    if (!current || current.distance !== distances.get(current.node)) {
+      continue;
+    }
+
+    for (const edge of graph.get(current.node) ?? []) {
+      const nextDistance = current.distance + edge.minutes;
+      const oldDistance = distances.get(edge.to) ?? Number.POSITIVE_INFINITY;
+      if (nextDistance < oldDistance) {
+        distances.set(edge.to, nextDistance);
+        previous.set(edge.to, { from: current.node, edge });
+        startForNode.set(edge.to, startForNode.get(current.node) as CandidateStation);
+        queue.push({ node: edge.to, distance: nextDistance, sequence: sequence++ });
+      }
+    }
+  }
+
+  return { distances, previous, startForNode };
+}
+
 function reconstructPath(
   endNode: string,
   previous: Map<string, PreviousStep>
@@ -223,33 +332,24 @@ function reconstructPath(
   return { stationIds, lineIds, transferStationIds };
 }
 
-export function fastestTransitPath(
-  origin: Coordinate,
+function pathToDestination(
   destination: Coordinate,
-  lines: TransitLine[],
+  stations: Station[],
   assumptions: SimulationAssumptions,
-  graph = buildTransitGraph(lines, assumptions)
+  result: DijkstraResult
 ): TransitPath | undefined {
-  const stations = allStations(lines);
-  if (stations.length < 2) {
-    return undefined;
-  }
-
-  const origins = candidateStations(origin, stations, assumptions);
   const destinations = candidateStations(destination, stations, assumptions);
-  if (origins.length === 0 || destinations.length === 0) {
+  if (destinations.length === 0) {
     return undefined;
   }
-
-  const destinationByNode = new Map(destinations.map((candidate) => [baseNode(candidate.station.id), candidate]));
-  const { distances, previous, startForNode } = dijkstra(graph, origins);
 
   let bestNode: string | undefined;
   let bestDestination: CandidateStation | undefined;
   let bestMinutes = Number.POSITIVE_INFINITY;
 
-  for (const [node, destinationCandidate] of destinationByNode) {
-    const baseMinutes = distances.get(node);
+  for (const destinationCandidate of destinations) {
+    const node = baseNode(destinationCandidate.station.id);
+    const baseMinutes = result.distances.get(node);
     if (baseMinutes === undefined) {
       continue;
     }
@@ -265,12 +365,12 @@ export function fastestTransitPath(
     return undefined;
   }
 
-  const originCandidate = startForNode.get(bestNode);
+  const originCandidate = result.startForNode.get(bestNode);
   if (!originCandidate) {
     return undefined;
   }
 
-  const reconstructed = reconstructPath(bestNode, previous);
+  const reconstructed = reconstructPath(bestNode, result.previous);
   if (reconstructed.lineIds.length === 0) {
     return undefined;
   }
@@ -283,4 +383,54 @@ export function fastestTransitPath(
     destinationStationId: bestDestination.station.id,
     ...reconstructed
   };
+}
+
+export function transitTimesFromOrigin(
+  origin: Coordinate,
+  lines: TransitLine[],
+  assumptions: SimulationAssumptions,
+  graph = buildTransitGraph(lines, assumptions)
+): TransitOriginPaths {
+  const stations = allStations(lines);
+  const origins = candidateStations(origin, stations, assumptions);
+  if (stations.length < 2 || origins.length === 0) {
+    return {
+      timesByStationId: new Map(),
+      pathTo: () => undefined
+    };
+  }
+
+  const result = heapDijkstra(graph, origins);
+  const timesByStationId = new Map<string, number>();
+  for (const station of stations) {
+    const minutes = result.distances.get(baseNode(station.id));
+    if (minutes !== undefined) {
+      timesByStationId.set(station.id, minutes);
+    }
+  }
+
+  return {
+    timesByStationId,
+    pathTo: (destination) => pathToDestination(destination, stations, assumptions, result)
+  };
+}
+
+export function fastestTransitPath(
+  origin: Coordinate,
+  destination: Coordinate,
+  lines: TransitLine[],
+  assumptions: SimulationAssumptions,
+  graph = buildTransitGraph(lines, assumptions)
+): TransitPath | undefined {
+  const stations = allStations(lines);
+  if (stations.length < 2) {
+    return undefined;
+  }
+
+  const origins = candidateStations(origin, stations, assumptions);
+  if (origins.length === 0) {
+    return undefined;
+  }
+
+  return pathToDestination(destination, stations, assumptions, dijkstra(graph, origins));
 }

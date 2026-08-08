@@ -147,18 +147,23 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     scenario.assumptions,
     scenario.simulationYear
   );
-  const zones =
-    scenario.simulationYear > 0 ? applyDevelopmentGrowth(baseZones, firstPassDevelopment) : baseZones;
+  let zones = baseZones;
+  let ridership = firstPassRidership;
+  let accessibility = firstPassAccessibility;
+  let zoneResults = firstPassDevelopment;
 
-  const ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions);
-  const accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
-  const zoneResults = projectDevelopment(
-    baseZones,
-    accessibility,
-    ridership.zoneTransitTrips,
-    scenario.assumptions,
-    scenario.simulationYear
-  );
+  if (scenario.simulationYear > 0) {
+    zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment);
+    ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions);
+    accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
+    zoneResults = projectDevelopment(
+      baseZones,
+      accessibility,
+      ridership.zoneTransitTrips,
+      scenario.assumptions,
+      scenario.simulationYear
+    );
+  }
   const constructionCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
   const annualOperatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
   const dailyRidership = ridership.dailyRidership;
