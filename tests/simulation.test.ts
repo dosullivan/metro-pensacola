@@ -7,7 +7,11 @@ import { calculateStationCatchment } from '../src/simulation/catchment';
 import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
 import { projectDevelopment } from '../src/simulation/development';
 import { lineMileage } from '../src/simulation/geo';
-import { estimateNetworkRidership } from '../src/simulation/ridership';
+import {
+  estimateCarGeneralizedTime,
+  estimateNetworkRidership,
+  estimateTransitGeneralizedTime
+} from '../src/simulation/ridership';
 import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
 import { runSimulation } from '../src/simulation/runSimulation';
 import {
@@ -257,6 +261,15 @@ describe('simulation primitives', () => {
 });
 
 describe('routing and ridership', () => {
+  it('converts fares and car operating costs into generalized minutes', () => {
+    const assumptions = cloneAssumptions();
+    const transitMinutes = estimateTransitGeneralizedTime(20, assumptions);
+    const carMinutes = estimateCarGeneralizedTime(testZones[0], testZones[1], assumptions);
+
+    expect(transitMinutes).toBe(27.5);
+    expect(carMinutes).toBeGreaterThan(0);
+  });
+
   it('finds a transit path between connected stations', () => {
     const assumptions = cloneAssumptions();
     const line = testLine();
@@ -450,6 +463,50 @@ describe('routing and ridership', () => {
     const base = estimateNetworkRidership([line], testZones, baseAssumptions).dailyRidership;
     const expensive = estimateNetworkRidership([line], testZones, expensiveAssumptions).dailyRidership;
     expect(expensive).toBeCloseTo(base, 8);
+  });
+
+  it('matches the pre-generalized-cost demo when both monetary costs are zero', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.assumptions.defaultFare = 0;
+    scenario.assumptions.carCostPerMile = 0;
+
+    const result = runSimulation(scenario, PENSACOLA_ZONES);
+    expect(result.dailyRidership).toBeCloseTo(541.7260800613443, 8);
+  });
+
+  it('keeps default demo ridership within the calibration band', () => {
+    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+    const previousRidership = 541.7260800613443;
+
+    expect(result.dailyRidership).toBeGreaterThan(previousRidership * 0.75);
+    expect(result.dailyRidership).toBeLessThan(previousRidership * 1.25);
+  });
+
+  it('decreases ridership monotonically as fares increase', () => {
+    const fares = [0, 2, 4, 6, 8, 10];
+    const riders = fares.map((fare) => {
+      const assumptions = cloneAssumptions();
+      assumptions.defaultFare = fare;
+      return estimateNetworkRidership([testLine()], testZones, assumptions).dailyRidership;
+    });
+
+    for (let index = 1; index < riders.length; index += 1) {
+      expect(riders[index]).toBeLessThan(riders[index - 1]);
+    }
+  });
+
+  it('produces an interior fare-revenue maximum on a zero-to-ten-dollar sweep', () => {
+    const fares = Array.from({ length: 11 }, (_, fare) => fare);
+    const revenues = fares.map((fare) => {
+      const assumptions = cloneAssumptions();
+      assumptions.defaultFare = fare;
+      const riders = estimateNetworkRidership([testLine()], testZones, assumptions).dailyRidership;
+      return riders * fare * assumptions.annualizationFactor;
+    });
+    const maximumIndex = revenues.indexOf(Math.max(...revenues));
+
+    expect(maximumIndex).toBeGreaterThan(0);
+    expect(maximumIndex).toBeLessThan(fares.length - 1);
   });
 });
 

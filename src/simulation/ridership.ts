@@ -41,6 +41,31 @@ export function estimateCarTime(
   );
 }
 
+function monetaryCostMinutes(dollars: number, assumptions: SimulationAssumptions): number {
+  return assumptions.valueOfTimeDollarsPerHour > 0
+    ? dollars * 60 / assumptions.valueOfTimeDollarsPerHour
+    : 0;
+}
+
+export function estimateTransitGeneralizedTime(
+  transitTime: number,
+  assumptions: SimulationAssumptions
+): number {
+  return transitTime + monetaryCostMinutes(assumptions.defaultFare, assumptions);
+}
+
+export function estimateCarGeneralizedTime(
+  origin: SimulationZone,
+  destination: SimulationZone,
+  assumptions: SimulationAssumptions
+): number {
+  const roadMiles = distanceMiles(origin.centroid, destination.centroid) * assumptions.roadCircuityFactor;
+  return (
+    estimateCarTime(origin, destination, assumptions) +
+    monetaryCostMinutes(roadMiles * assumptions.carCostPerMile, assumptions)
+  );
+}
+
 export function transitModeShare(
   transitTime: number,
   carTime: number,
@@ -79,7 +104,9 @@ export function estimateNetworkRidership(
     }
 
     const carTime = estimateCarTime(origin, destination, assumptions);
-    const share = transitModeShare(path.totalMinutes, carTime, assumptions);
+    const transitGeneralizedTime = estimateTransitGeneralizedTime(path.totalMinutes, assumptions);
+    const carGeneralizedTime = estimateCarGeneralizedTime(origin, destination, assumptions);
+    const share = transitModeShare(transitGeneralizedTime, carGeneralizedTime, assumptions);
     const riders = od.dailyTrips * share;
     if (riders <= 0.001) {
       continue;

@@ -95,6 +95,8 @@ export interface SimulationAssumptions {
   transferPenaltyMinutes: number;
   walkSpeedMph: number;
   defaultFare: number;
+  valueOfTimeDollarsPerHour: number;
+  carCostPerMile: number;
   capitalBudget: number;
   annualOperatingBudget: number;
   totalDailyRegionalTrips: number;

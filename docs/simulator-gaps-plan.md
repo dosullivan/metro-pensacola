@@ -21,6 +21,8 @@ Revision notes (after external review): performance work now leads so later phas
 - Compatibility test: with **both** monetary terms set to zero, results match today exactly (fare-only zeroing does not, since car cost varies with trip distance).
 - Calibration targets (explicit, tested as bands not exact values): demo corridor ridership within ±25% of its pre-change value at default fare/costs; ridership strictly decreasing in fare; annual fare revenue has an interior maximum on a $0–$10 sweep.
 
+Status: completed. Default assumptions use a $16/hour value of time and $0.35/mile automobile operating cost. Existing browser scenarios merge in new default assumptions during rehydration.
+
 ## Phase 3 — Station dwell time
 
 In-vehicle time is pure distance/speed, so adding intermediate stops is free — players can add stops for access with no service penalty (budgets are advisory).

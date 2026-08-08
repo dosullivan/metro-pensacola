@@ -50,6 +50,28 @@ describe('scenario store simulation action', () => {
     expect(useScenarioStore.getState().simulationNotice).toContain('Simulation complete');
   });
 
+  it('merges new assumption defaults into legacy persisted scenarios', () => {
+    const legacyScenario = cloneScenario(DEMO_SCENARIO);
+    const legacyAssumptions = legacyScenario.assumptions as Partial<Scenario['assumptions']>;
+    delete legacyAssumptions.valueOfTimeDollarsPerHour;
+    delete legacyAssumptions.carCostPerMile;
+    const currentState = useScenarioStore.getState();
+    const merge = useScenarioStore.persist.getOptions().merge;
+    const mergedState = merge?.(
+      {
+        scenarios: [legacyScenario],
+        activeScenarioId: legacyScenario.id
+      },
+      currentState
+    ) as typeof currentState;
+    const mergedScenario = selectActiveScenario(mergedState);
+
+    expect(mergedScenario.assumptions.valueOfTimeDollarsPerHour).toBe(
+      DEFAULT_ASSUMPTIONS.valueOfTimeDollarsPerHour
+    );
+    expect(mergedScenario.assumptions.carCostPerMile).toBe(DEFAULT_ASSUMPTIONS.carCostPerMile);
+  });
+
   it('shows an explicit notice when there is no usable service', () => {
     const blankScenario: Scenario = {
       id: 'blank',

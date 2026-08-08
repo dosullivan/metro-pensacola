@@ -45,6 +45,8 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   transferPenaltyMinutes: 6,
   walkSpeedMph: 3,
   defaultFare: 2,
+  valueOfTimeDollarsPerHour: 16,
+  carCostPerMile: 0.35,
   capitalBudget: 3_000_000_000,
   annualOperatingBudget: 75_000_000,
   totalDailyRegionalTrips: 185_000,

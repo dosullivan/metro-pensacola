@@ -98,12 +98,16 @@ In-vehicle time between adjacent stations currently uses straight-line station d
 Transit generalized time:
 
 ```text
-transitTime =
+transitPhysicalTime =
   accessWalkTime
   + averageWaitTime
   + inVehicleTime
   + transferPenalty
   + destinationWalkTime
+
+transitGeneralizedTime =
+  transitPhysicalTime
+  + defaultFare * 60 / valueOfTimeDollarsPerHour
 ```
 
 Average wait time:
@@ -114,15 +118,23 @@ waitTime = headway / 2
 
 ## Mode Share and Ridership
 
-Transit mode share uses a logistic model:
+Car generalized time includes an estimated per-mile operating cost:
+
+```text
+carGeneralizedTime =
+  carPhysicalTime
+  + roadMiles * carCostPerMile * 60 / valueOfTimeDollarsPerHour
+```
+
+Transit mode share uses a logistic model over generalized time:
 
 ```text
 P(transit) =
   maxTransitModeShare
-  * 1 / (1 + exp(beta * (transitTime - carTime)))
+  * 1 / (1 + exp(beta * (transitGeneralizedTime - carGeneralizedTime)))
 ```
 
-Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path.
+The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 
 ## System Results
 

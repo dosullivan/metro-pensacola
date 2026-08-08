@@ -130,6 +130,24 @@ function cloneScenario(scenario: Scenario): Scenario {
   return JSON.parse(JSON.stringify(scenario)) as Scenario;
 }
 
+function assumptionsWithDefaults(
+  assumptions: Partial<Scenario['assumptions']>
+): Scenario['assumptions'] {
+  return {
+    ...cloneScenario(DEMO_SCENARIO).assumptions,
+    ...assumptions,
+    technologies: Object.fromEntries(
+      Object.entries(DEFAULT_ASSUMPTIONS.technologies).map(([technologyId, technology]) => [
+        technologyId,
+        {
+          ...technology,
+          ...assumptions.technologies?.[technologyId as keyof typeof assumptions.technologies]
+        }
+      ])
+    ) as Scenario['assumptions']['technologies']
+  };
+}
+
 function blankScenario(index: number): Scenario {
   return {
     id: makeId('scenario'),
@@ -949,7 +967,19 @@ export const useScenarioStore = create<ScenarioState>()(
     {
       name: 'metro-pensacola-scenarios',
       version: 1,
-      storage: createJSONStorage(getScenarioStorage)
+      storage: createJSONStorage(getScenarioStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<ScenarioState>;
+        return {
+          ...currentState,
+          ...persisted,
+          scenarios:
+            persisted.scenarios?.map((scenario) => ({
+              ...scenario,
+              assumptions: assumptionsWithDefaults(scenario.assumptions)
+            })) ?? currentState.scenarios
+        };
+      }
     }
   )
 );
