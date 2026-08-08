@@ -35,6 +35,12 @@ export function ResultsPanel() {
 
           <div className="metric-list">
             <div>
+              <span>Regional Trip Demand</span>
+              <strong>
+                {formatNumber(results.modeledDailyRegionalTrips ?? scenario.assumptions.totalDailyRegionalTrips)}
+              </strong>
+            </div>
+            <div>
               <span>Annual Operating Cost</span>
               <strong>{formatCurrency(results.annualOperatingCost)}</strong>
             </div>

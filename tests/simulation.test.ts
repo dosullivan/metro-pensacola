@@ -5,6 +5,7 @@ import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
 import { calculateAccessibilityScores } from '../src/simulation/accessibility';
 import { calculateStationCatchment } from '../src/simulation/catchment';
 import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
+import { calculateDailyRegionalTrips, createDemandMatrix } from '../src/simulation/demand';
 import { projectDevelopment } from '../src/simulation/development';
 import { distanceMiles, lineMileage } from '../src/simulation/geo';
 import {
@@ -170,6 +171,30 @@ describe('simulation primitives', () => {
   it('uses half the headway as average wait time', () => {
     expect(averageWaitTime(10)).toBe(5);
     expect(averageWaitTime(30)).toBe(15);
+  });
+
+  it('scales regional trip demand with population and job growth', () => {
+    const assumptions = cloneAssumptions();
+    const grownZones = testZones.map((zone) => ({
+      ...zone,
+      population: zone.population * 1.1,
+      jobs: zone.jobs * 1.1
+    }));
+    const baseDemand = createDemandMatrix(testZones, assumptions);
+    const futureDemand = createDemandMatrix(grownZones, assumptions, testZones);
+
+    expect(baseDemand.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips,
+      8
+    );
+    expect(calculateDailyRegionalTrips(testZones, grownZones, assumptions)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips * 1.1,
+      8
+    );
+    expect(futureDemand.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips * 1.1,
+      8
+    );
   });
 
   it('snaps route clicks to nearby OSM road corridors', () => {
@@ -470,6 +495,40 @@ describe('routing and ridership', () => {
     expect(result.segmentRidership.get(inboundKey)).toBeGreaterThan(0);
   });
 
+  it('credits transit activity to both origin and destination zones', () => {
+    const assumptions = cloneAssumptions();
+    const activityZones: SimulationZone[] = [
+      { ...testZones[0], jobs: 0 },
+      { ...testZones[1], population: 0, households: 0 }
+    ];
+    const line = testLine();
+    const result = estimateNetworkRidership([line], activityZones, assumptions, {
+      applyCrowding: false
+    });
+    const destinationTrips = result.zoneTransitTrips.get(activityZones[1].id) ?? 0;
+    const originOnlyTrips = new Map(activityZones.map((zone) => [zone.id, 0]));
+    originOnlyTrips.set(activityZones[0].id, result.zoneTransitTrips.get(activityZones[0].id) ?? 0);
+    const creditedDevelopment = projectDevelopment(
+      activityZones,
+      new Map(activityZones.map((zone) => [zone.id, 0])),
+      result.zoneTransitTrips,
+      assumptions,
+      5
+    );
+    const originOnlyDevelopment = projectDevelopment(
+      activityZones,
+      new Map(activityZones.map((zone) => [zone.id, 0])),
+      originOnlyTrips,
+      assumptions,
+      5
+    );
+
+    expect(destinationTrips).toBeGreaterThan(0);
+    expect(creditedDevelopment[1].developmentPressure).toBeGreaterThan(
+      originOnlyDevelopment[1].developmentPressure
+    );
+  });
+
   it('reduces ridership when a low-capacity line is overcrowded', () => {
     const assumptions = cloneAssumptions();
     assumptions.technologies.brt.averageSpeedMph = 28;
@@ -682,6 +741,20 @@ describe('development and deterministic runs', () => {
     expect(high.reduce((sum, zone) => sum + zone.populationGrowth, 0)).toBeGreaterThan(
       low.reduce((sum, zone) => sum + zone.populationGrowth, 0)
     );
+  });
+
+  it('grows future regional demand with and without transit', () => {
+    const noTransitScenario = cloneScenario(DEMO_SCENARIO);
+    noTransitScenario.lines = [];
+    noTransitScenario.simulationYear = 20;
+    const transitScenario = cloneScenario(noTransitScenario);
+    transitScenario.lines = [testLine()];
+    const noTransit = runSimulation(noTransitScenario, testZones);
+    const withTransit = runSimulation(transitScenario, testZones);
+
+    expect(noTransit.baseDailyRegionalTrips).toBe(DEFAULT_ASSUMPTIONS.totalDailyRegionalTrips);
+    expect(noTransit.modeledDailyRegionalTrips).toBeGreaterThan(noTransit.baseDailyRegionalTrips);
+    expect(withTransit.modeledDailyRegionalTrips).toBeGreaterThan(noTransit.modeledDailyRegionalTrips);
   });
 
   it('produces identical model results for identical scenarios', () => {

@@ -176,6 +176,8 @@ export interface SimulationMessage {
 }
 
 export interface SimulationResults {
+  baseDailyRegionalTrips: number;
+  modeledDailyRegionalTrips: number;
   constructionCost: number;
   annualOperatingCost: number;
   dailyRidership: number;

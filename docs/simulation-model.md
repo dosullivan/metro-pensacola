@@ -66,7 +66,15 @@ rawDemand(i,j) =
   / max(distance(i,j), minimumDistance)^gravityDistanceExponent
 ```
 
-The raw matrix is normalized to `totalDailyRegionalTrips`.
+The base-year raw matrix is normalized to `totalDailyRegionalTrips`. Future-year demand scales with the average growth factor for regional population and jobs:
+
+```text
+futureDailyRegionalTrips =
+  baseDailyRegionalTrips
+  * (populationGrowthFactor + jobsGrowthFactor) / 2
+```
+
+This includes background downtown-driven growth as well as transit-supported growth. Transit affects how much development occurs and how the resulting demand is distributed, but it is not required for regional demand to grow.
 
 ## Car Time
 
@@ -174,6 +182,7 @@ The simulation reports:
 - Vehicle trips removed
 - CO2 reduction
 - Population and jobs within walking distance of transit
+- Base and modeled daily regional trip demand
 
 Fare revenue:
 
@@ -199,6 +208,8 @@ developmentPressure =
   + transitSuccess * 0.25
   + downtownPull * 0.20
 ```
+
+`transitSuccess` uses transit activity credited at both the origin and destination end of each trip, so employment destinations as well as residential origins receive development credit.
 
 Growth is then limited by development capacity:
 

@@ -18,6 +18,7 @@ import { calculateStationCatchment, calculateSystemCatchment, stationDevelopment
 import { estimateNetworkRidership } from './ridership';
 import { calculateAccessibilityScores } from './accessibility';
 import { applyDevelopmentGrowth, projectDevelopment } from './development';
+import { calculateDailyRegionalTrips } from './demand';
 
 function lineResults(
   scenario: Scenario,
@@ -154,7 +155,7 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
 
   if (scenario.simulationYear > 0) {
     zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment);
-    ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions);
+    ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions, { baseZones });
     accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
     zoneResults = projectDevelopment(
       baseZones,
@@ -166,6 +167,7 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
   }
   const constructionCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
   const annualOperatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
+  const modeledDailyRegionalTrips = calculateDailyRegionalTrips(baseZones, zones, scenario.assumptions);
   const dailyRidership = ridership.dailyRidership;
   const annualRidership = dailyRidership * scenario.assumptions.annualizationFactor;
   const fareRevenue = annualRidership * scenario.assumptions.defaultFare;
@@ -183,6 +185,8 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
   );
 
   return {
+    baseDailyRegionalTrips: scenario.assumptions.totalDailyRegionalTrips,
+    modeledDailyRegionalTrips,
     constructionCost,
     annualOperatingCost,
     dailyRidership,

@@ -17,6 +17,7 @@ export interface NetworkRidership {
 
 export interface RidershipOptions {
   applyCrowding?: boolean;
+  baseZones?: SimulationZone[];
 }
 
 export function directedSegmentKey(
@@ -108,7 +109,8 @@ function assignNetworkRidership(
   lines: TransitLine[],
   zones: SimulationZone[],
   assumptions: SimulationAssumptions,
-  lineTimeMultipliers: ReadonlyMap<string, number>
+  lineTimeMultipliers: ReadonlyMap<string, number>,
+  baseZones: SimulationZone[]
 ): NetworkRidership {
   const ridership = emptyRidership(lines, zones);
   for (const line of lines) {
@@ -120,7 +122,7 @@ function assignNetworkRidership(
   }
 
   const graph = buildTransitGraph(usableLines, assumptions, lineTimeMultipliers);
-  const demand = createDemandMatrix(zones, assumptions);
+  const demand = createDemandMatrix(zones, assumptions, baseZones);
   const pathsByOrigin = new Map<number, TransitOriginPaths>();
 
   for (const od of demand) {
@@ -153,6 +155,10 @@ function assignNetworkRidership(
       (ridership.stationExits.get(path.destinationStationId) ?? 0) + riders
     );
     ridership.zoneTransitTrips.set(origin.id, (ridership.zoneTransitTrips.get(origin.id) ?? 0) + riders);
+    ridership.zoneTransitTrips.set(
+      destination.id,
+      (ridership.zoneTransitTrips.get(destination.id) ?? 0) + riders
+    );
 
     for (const stationId of path.transferStationIds) {
       ridership.stationTransfers.set(stationId, (ridership.stationTransfers.get(stationId) ?? 0) + riders);
@@ -214,7 +220,8 @@ export function estimateNetworkRidership(
   assumptions: SimulationAssumptions,
   options: RidershipOptions = {}
 ): NetworkRidership {
-  const baseline = assignNetworkRidership(lines, zones, assumptions, new Map());
+  const baseZones = options.baseZones ?? zones;
+  const baseline = assignNetworkRidership(lines, zones, assumptions, new Map(), baseZones);
   if (options.applyCrowding === false || lines.length === 0) {
     return baseline;
   }
@@ -224,5 +231,5 @@ export function estimateNetworkRidership(
     return baseline;
   }
 
-  return assignNetworkRidership(lines, zones, assumptions, multipliers);
+  return assignNetworkRidership(lines, zones, assumptions, multipliers, baseZones);
 }

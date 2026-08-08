@@ -52,6 +52,8 @@ Two related corrections with the semantics decided up front.
 - Tests: base year totals unchanged at 185k; a +20-year scenario (with or without transit) shows totals above 185k consistent with its zone growth; transit-rich scenarios grow more than no-transit ones.
 - Optional (separate commit, only if round-trip commuting is wanted): symmetrize **unordered** zone pairs once — do not blindly mirror the existing ordered matrix, which already contains reverse pairs.
 
+Status: completed for the required scope. Transit activity credits both trip ends, future regional demand follows the 50/50 population-and-jobs growth blend, and results expose base and modeled trip totals. Optional unordered-pair symmetrization remains deferred.
+
 ## Phase 6 — Mode choice realism
 
 Equal-time transit currently captures 34% of an OD pair (`maxTransitModeShare 0.68` / 2); ACS vehicle availability sits unused.
