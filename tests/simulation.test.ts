@@ -3,7 +3,7 @@ import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
 import { accessibilityWeight, calculateAccessibilityScores } from '../src/simulation/accessibility';
-import { calculateStationCatchment } from '../src/simulation/catchment';
+import { calculateStationCatchment, calculateSystemCatchment } from '../src/simulation/catchment';
 import {
   averageWaitTime,
   calculateAnnualizedCapitalCost,
@@ -190,6 +190,55 @@ describe('simulation primitives', () => {
     expect(catchment.populationHalfMile).toBe(testZones[0].population);
     expect(catchment.populationOneMile).toBe(testZones[0].population + testZones[1].population);
     expect(catchment.jobsOneMile).toBe(testZones[0].jobs + testZones[1].jobs);
+  });
+
+  it('weights polygon zones by the share of their area inside each catchment', () => {
+    const assumptions = cloneAssumptions();
+    const station = {
+      id: 'area-station',
+      lineId: 'area-line',
+      name: 'Area Station',
+      coordinate: [0, 0] as [number, number],
+      order: 0
+    };
+    const zone: SimulationZone = {
+      ...testZones[0],
+      id: 'area-zone',
+      centroid: [0.01, 0],
+      polygon: [
+        [0, -0.005],
+        [0.02, -0.005],
+        [0.02, 0.005],
+        [0, 0.005],
+        [0, -0.005]
+      ],
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [0, -0.005],
+          [0.02, -0.005],
+          [0.02, 0.005],
+          [0, 0.005],
+          [0, -0.005]
+        ]]
+      },
+      population: 1_000,
+      jobs: 500
+    };
+    const catchment = calculateStationCatchment(station, [zone], assumptions);
+    const line = testLine({ id: 'area-line', stations: [station] });
+    const system = calculateSystemCatchment([line], [zone], assumptions);
+
+    expect(catchment.populationHalfMile).toBeGreaterThan(0);
+    expect(catchment.populationHalfMile).toBeLessThan(zone.population);
+    expect(catchment.populationOneMile).toBeGreaterThan(catchment.populationHalfMile);
+    expect(catchment.populationOneMile).toBeLessThan(zone.population);
+    expect(catchment.jobsHalfMile).toBeCloseTo(
+      zone.jobs * catchment.zoneWeightsHalfMile[zone.id],
+      8
+    );
+    expect(system.population).toBeCloseTo(catchment.populationHalfMile, 8);
+    expect(system.jobs).toBeCloseTo(catchment.jobsHalfMile, 8);
   });
 
   it('uses half the headway as average wait time', () => {

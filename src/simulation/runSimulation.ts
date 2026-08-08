@@ -58,7 +58,9 @@ function stationResults(
       const catchment = calculateStationCatchment(station, zones, scenario.assumptions);
       const catchmentDevelopment = catchment.zoneIdsOneMile.reduce((sum, zoneId) => {
         const zoneResult = developmentByZone.get(zoneId);
-        return sum + (zoneResult?.developmentPressure ?? 0);
+        return sum +
+          (zoneResult?.developmentPressure ?? 0) *
+          (catchment.zoneWeightsOneMile[zoneId] ?? 0);
       }, 0);
 
       return {
@@ -72,7 +74,8 @@ function stationResults(
         nearbyJobs: catchment.jobsHalfMile,
         catchment,
         developmentPotential:
-          stationDevelopmentPotential(station, zones, scenario.assumptions) + catchmentDevelopment / 10
+          stationDevelopmentPotential(station, zones, scenario.assumptions, catchment) +
+          catchmentDevelopment / 10
       };
     })
   );
@@ -123,7 +126,13 @@ function buildMessages(results: {
   if (topStation && topStation.entries + topStation.exits > 2200) {
     const nearbyGrowth = results.zoneResults
       .filter((zone) => topStation.catchment.zoneIdsOneMile.includes(zone.zoneId))
-      .reduce((sum, zone) => sum + zone.housingGrowth, 0);
+      .reduce(
+        (sum, zone) =>
+          sum +
+          zone.housingGrowth *
+            (topStation.catchment.zoneWeightsOneMile[zone.zoneId] ?? 0),
+        0
+      );
     messages.push({
       id: 'station-booming',
       title: `${topStation.stationName.toUpperCase()} IS BOOMING`,

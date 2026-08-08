@@ -87,6 +87,8 @@ export interface CatchmentStats {
   jobsOneMile: number;
   zoneIdsHalfMile: string[];
   zoneIdsOneMile: string[];
+  zoneWeightsHalfMile: Record<string, number>;
+  zoneWeightsOneMile: Record<string, number>;
 }
 
 export interface SimulationAssumptions {

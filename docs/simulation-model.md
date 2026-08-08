@@ -67,7 +67,17 @@ normal walking catchment = 0.5 miles
 extended catchment = 1.0 mile
 ```
 
-Block-group centroids inside each band contribute their full population and jobs. This is intentionally simple and explainable.
+For zones with polygon geometry, population and jobs are credited according to the share of zone area inside each circular catchment:
+
+```text
+zoneCatchmentWeight =
+  area(zonePolygon intersect catchmentBuffer) / area(zonePolygon)
+
+creditedPopulation = zonePopulation * zoneCatchmentWeight
+creditedJobs = zoneJobs * zoneCatchmentWeight
+```
+
+System catchments union all half-mile station buffers before intersecting zones, preventing overlapping station areas from being counted twice. The method assumes population and employment are distributed uniformly within each block group. Zones without valid polygon geometry use deterministic centroid inclusion as a fallback.
 
 ## Demand
 
@@ -299,7 +309,7 @@ Partial five-year periods are prorated. The model applies the compounded growth 
 - Dwell time is a technology-level gameplay assumption applied at non-terminal stops rather than a schedule-derived value.
 - Capacity uses a fixed daily-to-peak-hour share and one crowding feedback pass rather than schedules, vehicle blocks, or a converged transit assignment.
 - Path spreading considers the fastest network path and direct single-line alternatives rather than enumerating every possible K-shortest transfer path.
-- Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
+- Station catchments use area-weighted block-group geometry and circular distance buffers rather than parcel-level activity or a pedestrian street network.
 - Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.
 - Operating costs are annualized gameplay assumptions.

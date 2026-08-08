@@ -78,9 +78,9 @@ Status: completed. Accessibility now decays smoothly around the configured midpo
 
 - **Annualized cost per rider**: add asset-life + discount-rate assumptions and report annualized capital + operating per annual rider.
 - Stretch: logit path spreading across near-equal paths. **Completed:** the fastest network path and direct single-line alternatives now receive deterministic logit shares inside a configurable time window.
-- Stretch: area-weighted zone catchments (needs polygons in the sim data path; cheap alternative is distance-decay weighting of centroid contributions).
+- Stretch: area-weighted zone catchments. **Completed:** station and system catchments weight population and jobs by polygon overlap, union system buffers to prevent double-counting, and retain centroid fallback for missing geometry.
 
-Status: the required annualized cost-per-rider metric is completed using configurable asset-life and discount-rate assumptions. The two items explicitly labeled Stretch remain optional follow-up work.
+Status: completed, including both stretch goals. Annualized cost uses configurable asset-life and discount-rate assumptions, competitive paths receive logit shares, and catchments use polygon-area weighting.
 
 ## Out of scope for this branch
 
