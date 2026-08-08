@@ -82,6 +82,10 @@ Status: completed. Accessibility now decays smoothly around the configured midpo
 
 Status: completed, including both stretch goals. Annualized cost uses configurable asset-life and discount-rate assumptions, competitive paths receive logit shares, and catchments use polygon-area weighting.
 
+## Post-review performance pass
+
+Status: completed. Single-line alternative routing is gated by zone/line catchment eligibility (behavior-preserving, verified against the golden demo test), catchment coverage fractions are cached by zone and buffer signature, and Present Day runs now measure ~0.1 s (1 line) to ~0.4 s (6 lines) versus ~1.0-4.5 s before. The web worker remains deferred until live re-simulation on edit is a feature; at current timings the on-demand run does not need one.
+
 ## Out of scope for this branch
 
 Park-and-ride / feeder access modeling (deserves its own design), Playwright map tests, bundle-size code-splitting.

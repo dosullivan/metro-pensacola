@@ -189,32 +189,72 @@ function assignNetworkRidership(
   }
 
   const graph = buildTransitGraph(usableLines, assumptions, lineTimeMultipliers);
-  const pathServices = [
-    { lines: usableLines, graph },
-    ...(usableLines.length > 1
-      ? usableLines.map((line) => ({
-        lines: [line],
-        graph: buildTransitGraph([line], assumptions, lineTimeMultipliers)
-      }))
-      : [])
-  ];
+  const singleLineServices = new Map<
+    string,
+    { line: TransitLine; graph: ReturnType<typeof buildTransitGraph> }
+  >();
+  function singleLineService(lineId: string) {
+    let service = singleLineServices.get(lineId);
+    if (!service) {
+      const line = usableLines.find((candidate) => candidate.id === lineId) as TransitLine;
+      service = { line, graph: buildTransitGraph([line], assumptions, lineTimeMultipliers) };
+      singleLineServices.set(lineId, service);
+    }
+    return service;
+  }
+
+  const eligibleLinesByZone = zones.map((zone) =>
+    usableLines
+      .filter((line) =>
+        line.stations.some(
+          (station) => distanceMiles(zone.centroid, station.coordinate) <= assumptions.extendedCatchmentMiles
+        )
+      )
+      .map((line) => line.id)
+  );
+
   const demand = createDemandMatrix(zones, assumptions, baseZones);
-  const pathsByOrigin = new Map<number, TransitOriginPaths[]>();
+  const fullPathsByOrigin = new Map<number, TransitOriginPaths>();
+  const linePathsByOrigin = new Map<number, Map<string, TransitOriginPaths>>();
 
   for (const od of demand) {
     const origin = zones[od.originIndex];
     const destination = zones[od.destinationIndex];
-    let originPathSets = pathsByOrigin.get(od.originIndex);
-    if (!originPathSets) {
-      originPathSets = pathServices.map((service) =>
-        transitTimesFromOrigin(origin.centroid, service.lines, assumptions, service.graph)
-      );
-      pathsByOrigin.set(od.originIndex, originPathSets);
+    let fullPaths = fullPathsByOrigin.get(od.originIndex);
+    if (!fullPaths) {
+      fullPaths = transitTimesFromOrigin(origin.centroid, usableLines, assumptions, graph);
+      fullPathsByOrigin.set(od.originIndex, fullPaths);
     }
+    const fullPath = fullPaths.pathTo(destination.centroid);
+
+    const destinationEligible = eligibleLinesByZone[od.destinationIndex];
+    const sharedEligibleLineIds = eligibleLinesByZone[od.originIndex].filter((lineId) =>
+      destinationEligible.includes(lineId)
+    );
+
+    const alternativePaths: TransitPath[] = [];
+    if (usableLines.length > 1 && (fullPath || sharedEligibleLineIds.length > 0)) {
+      let linePaths = linePathsByOrigin.get(od.originIndex);
+      if (!linePaths) {
+        linePaths = new Map<string, TransitOriginPaths>();
+        linePathsByOrigin.set(od.originIndex, linePaths);
+      }
+      for (const lineId of sharedEligibleLineIds) {
+        let originPaths = linePaths.get(lineId);
+        if (!originPaths) {
+          const service = singleLineService(lineId);
+          originPaths = transitTimesFromOrigin(origin.centroid, [service.line], assumptions, service.graph);
+          linePaths.set(lineId, originPaths);
+        }
+        const path = originPaths.pathTo(destination.centroid);
+        if (path) {
+          alternativePaths.push(path);
+        }
+      }
+    }
+
     const pathChoices = spreadTransitPaths(
-      originPathSets
-        .map((originPaths) => originPaths.pathTo(destination.centroid))
-        .filter((path): path is TransitPath => Boolean(path)),
+      [...(fullPath ? [fullPath] : []), ...alternativePaths],
       assumptions
     );
     const fastestPath = pathChoices[0]?.path;

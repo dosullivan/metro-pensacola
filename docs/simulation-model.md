@@ -318,3 +318,10 @@ Partial five-year periods are prorated. The model applies the compounded growth 
 ## Runtime Characteristics
 
 Demand and accessibility are evaluated across ordered zone pairs. With 296 zones, a model pass considers about 87,000 origin-destination pairs before filtering for usable transit paths, but transit routing is computed once per origin and reused for its destinations. Future-year simulations run initial and final ridership/accessibility passes so long-range development can feed back into demand; Present Day runs only one pass. The remaining work scales with the number of zone pairs and transit graph size.
+
+Two additional optimizations keep path spreading and polygon catchments affordable:
+
+- Single-line alternative paths are only evaluated for origin-destination pairs where both endpoint zones have a station of that line within the extended catchment radius. Ineligible lines cannot produce a path, so this gating does not change results. Single-line graphs are also built lazily and shared across origins.
+- Zone coverage fractions from polygon intersection are cached by zone id and catchment signature (buffer coordinates plus radius), so repeated simulations with unchanged stations skip the geometry work entirely. Zone base geometry areas are cached by geometry reference, which also survives future-year zone copies.
+
+On the current demo dataset a Present Day run measures roughly 0.1 s with one line and roughly 0.4 s with six lines (about 10x faster than before this pass). At these times the simulation remains on the main thread; a web worker is only worth adding if live re-simulation on every edit becomes a feature.
