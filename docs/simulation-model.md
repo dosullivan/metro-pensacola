@@ -140,9 +140,20 @@ Transit mode share uses a logistic model over generalized time:
 
 ```text
 P(transit) =
+  originMaximumTransitShare
+  * 1 / (1 + exp(beta * generalizedTimeDifference))
+
+generalizedTimeDifference =
+  transitGeneralizedTime
+  + transitSpecificConstantMinutes
+  - carGeneralizedTime
+
+originMaximumTransitShare =
   maxTransitModeShare
-  * 1 / (1 + exp(beta * (transitGeneralizedTime - carGeneralizedTime)))
+  + (1 - maxTransitModeShare) * zeroVehicleHouseholdRate
 ```
+
+The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo corridor has a gameplay calibration band of 75–250 weekday riders and currently produces about 94. These are gameplay calibrations rather than a regional forecast.
 
 The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 

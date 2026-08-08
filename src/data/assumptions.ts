@@ -66,6 +66,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   parkingPenaltyMinutes: 4,
   modeChoiceBeta: 0.09,
   maxTransitModeShare: 0.68,
+  transitSpecificConstantMinutes: 17,
   annualizationFactor: 300,
   vehicleTripsRemovedPerTransitTrip: 0.72,
   co2KgPerVehicleTrip: 3.9,

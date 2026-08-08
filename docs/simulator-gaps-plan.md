@@ -62,6 +62,8 @@ Equal-time transit currently captures 34% of an OD pair (`maxTransitModeShare 0.
 - Scale each OD pair's max share by origin-zone zero-vehicle household rate (already in zone data).
 - Tests: equal-time share within the target band; a zero-vehicle-heavy origin shows higher share than an otherwise-identical zone.
 
+Status: completed. A 17-minute transit-specific constant yields roughly 12% equal-cost share at the base ceiling, while ACS zero-vehicle household rates raise the origin-specific maximum share. The conceptual demo currently produces about 94 weekday riders inside its explicit 75–250 gameplay band.
+
 ## Phase 7 — Fidelity cleanups (independent small slices)
 
 1. **Accessibility decay**: replace the binary 30-minute cutoff in `accessibility.ts` with a smooth decay (e.g. logistic around 30 min).

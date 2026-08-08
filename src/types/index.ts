@@ -110,6 +110,7 @@ export interface SimulationAssumptions {
   parkingPenaltyMinutes: number;
   modeChoiceBeta: number;
   maxTransitModeShare: number;
+  transitSpecificConstantMinutes: number;
   annualizationFactor: number;
   vehicleTripsRemovedPerTransitTrip: number;
   co2KgPerVehicleTrip: number;

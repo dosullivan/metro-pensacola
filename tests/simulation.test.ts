@@ -12,7 +12,9 @@ import {
   directedSegmentKey,
   estimateCarGeneralizedTime,
   estimateNetworkRidership,
-  estimateTransitGeneralizedTime
+  estimateTransitGeneralizedTime,
+  maximumTransitShareForOrigin,
+  transitModeShare
 } from '../src/simulation/ridership';
 import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
 import { runSimulation } from '../src/simulation/runSimulation';
@@ -312,6 +314,27 @@ describe('routing and ridership', () => {
 
     expect(transitMinutes).toBe(27.5);
     expect(carMinutes).toBeGreaterThan(0);
+  });
+
+  it('keeps equal-generalized-cost transit share in the calibration band', () => {
+    const assumptions = cloneAssumptions();
+    const share = transitModeShare(30, 30, assumptions);
+
+    expect(share).toBeGreaterThan(0.1);
+    expect(share).toBeLessThan(0.15);
+  });
+
+  it('raises the transit ceiling for origins with fewer vehicle-owning households', () => {
+    const assumptions = cloneAssumptions();
+    const vehicleRichOrigin = { ...testZones[0], carOwnership: 0.98 };
+    const lowVehicleOrigin = { ...testZones[0], carOwnership: 0.5 };
+    const vehicleRichMaximum = maximumTransitShareForOrigin(vehicleRichOrigin, assumptions);
+    const lowVehicleMaximum = maximumTransitShareForOrigin(lowVehicleOrigin, assumptions);
+
+    expect(lowVehicleMaximum).toBeGreaterThan(vehicleRichMaximum);
+    expect(transitModeShare(30, 30, assumptions, lowVehicleMaximum)).toBeGreaterThan(
+      transitModeShare(30, 30, assumptions, vehicleRichMaximum)
+    );
   });
 
   it('finds a transit path between connected stations', () => {
@@ -672,6 +695,7 @@ describe('routing and ridership', () => {
     const scenario = cloneScenario(DEMO_SCENARIO);
     scenario.assumptions.defaultFare = 0;
     scenario.assumptions.carCostPerMile = 0;
+    scenario.assumptions.transitSpecificConstantMinutes = 0;
     Object.values(scenario.assumptions.technologies).forEach((technology) => {
       technology.dwellMinutesPerStop = 0;
     });
@@ -682,6 +706,7 @@ describe('routing and ridership', () => {
 
   it('keeps default demo ridership within the calibration band', () => {
     const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.assumptions.transitSpecificConstantMinutes = 0;
     Object.values(scenario.assumptions.technologies).forEach((technology) => {
       technology.dwellMinutesPerStop = 0;
     });
@@ -690,6 +715,13 @@ describe('routing and ridership', () => {
 
     expect(result.dailyRidership).toBeGreaterThan(previousRidership * 0.75);
     expect(result.dailyRidership).toBeLessThan(previousRidership * 1.25);
+  });
+
+  it('keeps the mode-choice-calibrated demo within its gameplay target band', () => {
+    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+
+    expect(result.dailyRidership).toBeGreaterThan(75);
+    expect(result.dailyRidership).toBeLessThan(250);
   });
 
   it('decreases ridership monotonically as fares increase', () => {

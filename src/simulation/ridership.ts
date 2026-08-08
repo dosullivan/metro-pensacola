@@ -99,10 +99,24 @@ export function estimateCarGeneralizedTime(
 export function transitModeShare(
   transitTime: number,
   carTime: number,
+  assumptions: SimulationAssumptions,
+  maximumShare = assumptions.maxTransitModeShare
+): number {
+  const generalizedDifference =
+    transitTime + assumptions.transitSpecificConstantMinutes - carTime;
+  const logistic = 1 / (1 + Math.exp(assumptions.modeChoiceBeta * generalizedDifference));
+  return clamp(logistic * maximumShare, 0, maximumShare);
+}
+
+export function maximumTransitShareForOrigin(
+  origin: SimulationZone,
   assumptions: SimulationAssumptions
 ): number {
-  const logistic = 1 / (1 + Math.exp(assumptions.modeChoiceBeta * (transitTime - carTime)));
-  return clamp(logistic * assumptions.maxTransitModeShare, 0, assumptions.maxTransitModeShare);
+  const zeroVehicleHouseholdRate = clamp(1 - (origin.carOwnership ?? 1), 0, 1);
+  return (
+    assumptions.maxTransitModeShare +
+    (1 - assumptions.maxTransitModeShare) * zeroVehicleHouseholdRate
+  );
 }
 
 function assignNetworkRidership(
@@ -141,7 +155,12 @@ function assignNetworkRidership(
     const carTime = estimateCarTime(origin, destination, assumptions);
     const transitGeneralizedTime = estimateTransitGeneralizedTime(path.totalMinutes, assumptions);
     const carGeneralizedTime = estimateCarGeneralizedTime(origin, destination, assumptions);
-    const share = transitModeShare(transitGeneralizedTime, carGeneralizedTime, assumptions);
+    const share = transitModeShare(
+      transitGeneralizedTime,
+      carGeneralizedTime,
+      assumptions,
+      maximumTransitShareForOrigin(origin, assumptions)
+    );
     const riders = od.dailyTrips * share;
     if (riders <= 0.001) {
       continue;

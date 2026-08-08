@@ -62,6 +62,7 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.peakHourRidershipShare;
     delete legacyAssumptions.crowdingThreshold;
     delete legacyAssumptions.crowdingTimePenaltyFactor;
+    delete legacyAssumptions.transitSpecificConstantMinutes;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -89,6 +90,9 @@ describe('scenario store simulation action', () => {
     expect(mergedScenario.assumptions.crowdingThreshold).toBe(DEFAULT_ASSUMPTIONS.crowdingThreshold);
     expect(mergedScenario.assumptions.crowdingTimePenaltyFactor).toBe(
       DEFAULT_ASSUMPTIONS.crowdingTimePenaltyFactor
+    );
+    expect(mergedScenario.assumptions.transitSpecificConstantMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.transitSpecificConstantMinutes
     );
   });
 
