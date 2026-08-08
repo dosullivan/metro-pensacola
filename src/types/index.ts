@@ -142,6 +142,7 @@ export interface SimulationAssumptions {
   roadSnapDistanceFeet: number;
   specialGeneratorRadiusMiles: number;
   specialGeneratorDemandBonus: number;
+  airportEventDemandBonus: number;
   downtownCoordinate: Coordinate;
   airportCoordinate: Coordinate;
   uwfCoordinate: Coordinate;
@@ -166,6 +167,34 @@ export interface CareerProgress {
   cumulativeOperatingSubsidy: number;
   unlockedMilestoneIds: string[];
   pendingOperatingDeficit?: OperatingDeficit;
+  objectiveResults: Record<string, ObjectiveResult>;
+  completedEventIds: string[];
+  developmentCapacityBonuses: Record<string, number>;
+  activeCouncilReview?: CouncilReview;
+  outcome?: CareerOutcome;
+}
+
+export type ObjectiveStatus = 'pending' | 'met' | 'missed';
+
+export interface ObjectiveResult {
+  status: ObjectiveStatus;
+  value: number;
+  evaluatedYear?: number;
+}
+
+export interface CouncilReview {
+  lineId: string;
+  lineName: string;
+  baselineRidership: number;
+  deadlineYear: number;
+  subsidyCapCut: number;
+}
+
+export interface CareerOutcome {
+  status: 'won' | 'lost';
+  year: number;
+  dailyRidership: number;
+  operatingSubsidy: number;
 }
 
 export interface OperatingDeficit {
@@ -239,6 +268,8 @@ export interface SimulationResults {
   co2ReductionKg: number;
   populationWithinWalkingDistance: number;
   jobsWithinWalkingDistance: number;
+  airportConnected: boolean;
+  airportStationMovements: number;
   lineResults: LineResults[];
   stationResults: StationResults[];
   zoneResults: ZoneResults[];

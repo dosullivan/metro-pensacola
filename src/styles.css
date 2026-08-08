@@ -663,6 +663,98 @@ select {
   line-height: 1.4;
 }
 
+.objective-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.objective {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid rgba(244, 241, 234, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px;
+}
+
+.objective > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.objective span,
+.objective small {
+  color: #b9b0a3;
+  font-size: 10px;
+}
+
+.objective.met {
+  border-left-color: #2dd4bf;
+}
+
+.objective.met > div span {
+  color: #5eead4;
+}
+
+.objective.missed {
+  border-left-color: #ef4444;
+}
+
+.objective.missed > div span {
+  color: #fca5a5;
+}
+
+.council-review {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  background: rgba(113, 63, 18, 0.18);
+  padding: 9px;
+}
+
+.council-review span {
+  color: #d8d0c3;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.career-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid rgba(244, 241, 234, 0.2);
+  padding: 12px;
+  text-align: center;
+}
+
+.career-summary.won {
+  border-color: rgba(45, 212, 191, 0.55);
+  background: rgba(13, 148, 136, 0.15);
+}
+
+.career-summary.lost {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.career-summary > strong {
+  color: #fffaf1;
+  font-size: 16px;
+}
+
+.career-summary > small,
+.career-summary span {
+  color: #d8d0c3;
+  font-size: 10px;
+}
+
+.career-summary > div {
+  display: grid;
+  gap: 3px;
+}
+
 .comparison-header,
 .comparison-row {
   display: grid;

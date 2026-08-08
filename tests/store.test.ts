@@ -79,6 +79,7 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.averageHouseholdSize;
     delete legacyAssumptions.specialGeneratorRadiusMiles;
     delete legacyAssumptions.specialGeneratorDemandBonus;
+    delete legacyAssumptions.airportEventDemandBonus;
     delete legacyAssumptions.uwfCoordinate;
     delete legacyAssumptions.capitalAssetLifeYears;
     delete legacyAssumptions.capitalDiscountRate;
@@ -130,6 +131,7 @@ describe('scenario store simulation action', () => {
     expect(mergedScenario.assumptions.specialGeneratorDemandBonus).toBe(
       DEFAULT_ASSUMPTIONS.specialGeneratorDemandBonus
     );
+    expect(mergedScenario.assumptions.airportEventDemandBonus).toBe(0);
     expect(mergedScenario.assumptions.uwfCoordinate).toEqual(DEFAULT_ASSUMPTIONS.uwfCoordinate);
     expect(mergedScenario.assumptions.capitalAssetLifeYears).toBe(
       DEFAULT_ASSUMPTIONS.capitalAssetLifeYears
@@ -153,7 +155,22 @@ describe('scenario store simulation action', () => {
       remainingCapital: 123_456_789,
       cumulativeOperatingSubsidy: 42_000_000,
       unlockedMilestoneIds: ['first-300-riders'],
-      pendingOperatingDeficit: { year: 3, amount: 2_000_000, annualSubsidy: 27_000_000 }
+      pendingOperatingDeficit: { year: 3, amount: 2_000_000, annualSubsidy: 27_000_000 },
+      completedEventIds: ['airport-success'],
+      developmentCapacityBonuses: { 'zone-a': 0.075 },
+      activeCouncilReview: {
+        lineId: 'line-a',
+        lineName: 'Line A',
+        baselineRidership: 100,
+        deadlineYear: 5,
+        subsidyCapCut: 5_000_000
+      },
+      outcome: {
+        status: 'lost',
+        year: 20,
+        dailyRidership: 1_499,
+        operatingSubsidy: 25_000_001
+      }
     };
     const currentState = useScenarioStore.getState();
     const merged = useScenarioStore.persist.getOptions().merge?.(

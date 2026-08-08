@@ -1,5 +1,6 @@
 import { AlertTriangle, Clock3, Copy, FilePlus2, GitCompareArrows, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { calculateScenarioCapitalCost } from '../../simulation/costs';
+import { CAREER_OBJECTIVES, careerObjectiveValue } from '../../data/gameplay';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import { formatCurrency, formatNumber } from '../../utils/format';
 
@@ -107,7 +108,7 @@ export function ScenarioPanel() {
           </div>
           <button
             className="command primary"
-            disabled={isSimulating || Boolean(scenario.career?.pendingOperatingDeficit)}
+            disabled={isSimulating || Boolean(scenario.career?.pendingOperatingDeficit) || Boolean(scenario.career?.outcome)}
             onClick={advanceYear}
           >
             <Clock3 size={16} />
@@ -135,6 +136,59 @@ export function ScenarioPanel() {
           <button className="command danger" onClick={() => resolveOperatingDeficit('emergency-grant')}>
             Emergency grant (lose 2× deficit in capital)
           </button>
+        </div>
+      ) : null}
+
+      {scenario.gameMode === 'career' && scenario.career ? (
+        <div className="objective-list">
+          <div className="panel-title small">Career Objectives</div>
+          {CAREER_OBJECTIVES.map((objective) => {
+            const result = scenario.career?.objectiveResults[objective.id];
+            const value = result && result.status !== 'pending'
+              ? result.value
+              : careerObjectiveValue(objective, scenario.results);
+            const displayedValue = objective.metric === 'operating-subsidy'
+              ? formatCurrency(value)
+              : objective.metric === 'airport-connected'
+                ? value >= 1 ? 'Connected' : 'Not connected'
+                : formatNumber(value);
+            const target = objective.metric === 'operating-subsidy'
+              ? formatCurrency(objective.target)
+              : objective.metric === 'airport-connected'
+                ? 'Connection'
+                : formatNumber(objective.target);
+            return (
+              <div className={`objective ${result?.status ?? 'pending'}`} key={objective.id}>
+                <div>
+                  <strong>{objective.title}</strong>
+                  <span>{result?.status === 'met' ? 'Met' : result?.status === 'missed' ? 'Missed' : `Year ${objective.deadlineYear}`}</span>
+                </div>
+                <small>{displayedValue} · target {objective.comparison === 'at-most' ? '≤' : '≥'} {target}</small>
+                <small>{objective.description}</small>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {scenario.career?.activeCouncilReview ? (
+        <div className="council-review">
+          <strong>Council review: {scenario.career.activeCouncilReview.lineName}</strong>
+          <span>
+            Improve ridership 25% by Year {scenario.career.activeCouncilReview.deadlineYear}, or lose {formatCurrency(scenario.career.activeCouncilReview.subsidyCapCut)} from the annual subsidy cap.
+          </span>
+        </div>
+      ) : null}
+
+      {scenario.career?.outcome ? (
+        <div className={`career-summary ${scenario.career.outcome.status}`}>
+          <small>FINAL CAREER RESULT · YEAR {scenario.career.outcome.year}</small>
+          <strong>{scenario.career.outcome.status === 'won' ? 'REGIONAL MANDATE WON' : 'REGIONAL MANDATE LOST'}</strong>
+          <div>
+            <span>{formatNumber(scenario.career.outcome.dailyRidership)} riders/day</span>
+            <span>{formatCurrency(scenario.career.outcome.operatingSubsidy)} subsidy/year</span>
+            <span>{formatCurrency(scenario.career.remainingCapital)} capital remaining</span>
+          </div>
         </div>
       ) : null}
 

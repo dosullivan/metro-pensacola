@@ -340,3 +340,15 @@ Career time advances in one-year steps. Each paid new line or capital-increasing
 The simulation filters service through that opening-year boundary. Under-construction lines remain in total construction cost and line results, but are excluded from routing, accessibility, development response, station/system catchments, airport detection, ridership, and annual operating cost. Their line result reports `isOpen: false`, zero operating cost and ridership, and the scheduled opening year.
 
 Advancing from a completed Career year adds that result's operating subsidy (`max(0, annual operating cost - fare revenue)`) to cumulative subsidy, increments `simulationYear`, clears the old result, and lets live simulation compute the new year from base zones. If the annual subsidy exceeds the persisted cap, no accrual or time change occurs until the player chooses a response. Frequency cuts and a $0.50 fare increase change inputs and require a new forecast before advancing; the emergency grant covers the year immediately, advances the clock, and deducts twice the deficit from remaining capital. The pending deficit is persisted, so reloads cannot bypass the choice.
+
+## Career objectives and deterministic events
+
+Objectives are evaluated from published simulation results at their configured deadline. Airport connection is a coordinate test against open service and is due in Year 10. Weekday ridership must reach 1,500 and annual operating subsidy must remain at or below $25 million in Year 20. Equality passes. Each result locks as met or missed, and the Year 20 evaluation persists a won/lost outcome and final ridership and subsidy snapshot; time cannot advance after that outcome.
+
+Gameplay event thresholds and effects live beside the objectives in `src/data/gameplay.ts`, and the simulation news feed reads the same threshold definitions:
+
+- At 40 daily entries plus exits at the airport station, an airport partnership adds `0.10` to a new airport-only demand bonus. The general special-generator bonus still applies to both the airport and UWF; the event bonus does not affect UWF.
+- When the highest construction-cost-per-rider line reaches at least $450,000 per weekday rider, a two-year council review records that line and its baseline. Improving line ridership by 25% clears the review; reaching the deadline without that improvement permanently cuts the annual subsidy cap by $5 million.
+- At 100 daily entries plus exits at the busiest station, rezoning adds `0.15 × catchment coverage fraction` to each zone's development capacity within one mile, capped at a total capacity of 1 during simulation.
+
+Completed event IDs prevent repeated effects. Airport demand lives in assumptions; station capacity bonuses, council state, objective results, and the outcome live in Career progress. Simulation fingerprinting includes the capacity-bonus map, so a station event automatically causes one fresh worker result with its mechanical effect applied.

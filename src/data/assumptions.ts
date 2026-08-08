@@ -92,6 +92,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   roadSnapDistanceFeet: 650,
   specialGeneratorRadiusMiles: 1.5,
   specialGeneratorDemandBonus: 0.15,
+  airportEventDemandBonus: 0,
   downtownCoordinate: [-87.2154, 30.412],
   airportCoordinate: [-87.1866, 30.4734],
   uwfCoordinate: [-87.2181, 30.5495]

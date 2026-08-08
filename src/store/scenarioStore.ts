@@ -7,6 +7,7 @@ import {
   FARE_INCREASE_PER_DEFICIT_CHOICE,
   careerProgressWithDefaults,
   createCareerProgress,
+  evaluateCareerGameplay,
   isLineOpen,
   lineOpeningYear,
   scheduleCareerConstruction,
@@ -196,7 +197,8 @@ export function simulationInputsFingerprint(scenario: Scenario): string {
   return JSON.stringify({
     lines: scenario.lines,
     assumptions: scenario.assumptions,
-    simulationYear: scenario.simulationYear
+    simulationYear: scenario.simulationYear,
+    developmentCapacityBonuses: scenario.career?.developmentCapacityBonuses
   });
 }
 
@@ -631,6 +633,9 @@ export const useScenarioStore = create<ScenarioState>()(
         set((state) => {
           const scenario = getActiveScenario(state);
           if (scenario.gameMode !== 'career' || !scenario.career) return {};
+          if (scenario.career.outcome) {
+            return { simulationNotice: 'This Career has reached its final result.' };
+          }
           if (state.isSimulating) {
             return { simulationNotice: 'Wait for the current simulation before advancing the year.' };
           }
@@ -1267,17 +1272,35 @@ export const useScenarioStore = create<ScenarioState>()(
               currentScenario.gameMode === 'career' && currentScenario.career
                 ? unlockFundingMilestones(currentScenario.career, results)
                 : undefined;
+            const gameplayUpdate =
+              currentScenario.gameMode === 'career' && currentScenario.career
+                ? evaluateCareerGameplay(
+                    currentScenario,
+                    results,
+                    milestoneUpdate?.progress ?? currentScenario.career
+                  )
+                : undefined;
             const milestoneMessages =
               milestoneUpdate?.unlocked.map((milestone) => ({
                 id: `funding-${milestone.id}`,
                 title: milestone.title,
                 body: `$${milestone.capitalGrant.toLocaleString()} in new capital funding has been awarded.`
               })) ?? [];
+            const combinedMessages = [
+              ...(gameplayUpdate?.messages ?? []),
+              ...milestoneMessages,
+              ...(results.messages ?? [])
+            ];
             const completedResults = {
               ...results,
-              messages: [...milestoneMessages, ...(results.messages ?? [])]
+              messages: combinedMessages.filter(
+                (message, index) =>
+                  combinedMessages.findIndex((candidate) => candidate.id === message.id) === index
+              )
             };
-            const completedNotice = milestoneUpdate?.unlocked.length
+            const completedNotice = gameplayUpdate?.messages.length
+              ? gameplayUpdate.messages[0].title
+              : milestoneUpdate?.unlocked.length
               ? `${milestoneUpdate.unlocked.map((milestone) => milestone.title).join(', ')} unlocked.`
               : simulationNotice;
             return {
@@ -1285,7 +1308,9 @@ export const useScenarioStore = create<ScenarioState>()(
                 scenario.id === currentScenario.id
                   ? {
                       ...currentScenario,
-                      career: milestoneUpdate?.progress ?? currentScenario.career,
+                      assumptions: gameplayUpdate?.assumptions ?? currentScenario.assumptions,
+                      career:
+                        gameplayUpdate?.progress ?? milestoneUpdate?.progress ?? currentScenario.career,
                       results: completedResults
                     }
                   : scenario

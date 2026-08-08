@@ -51,6 +51,8 @@ Status: completed. Career replaces the free year picker with a one-year Advance 
 - **Events with teeth**: upgrade the message system so triggers have small mechanical effects — the airport-success message grants a demand bonus at the airport generator; "council questions line X" starts a 2-year countdown to an ops-budget cut unless ridership improves; a station boom raises nearby development capacity. All deterministic, all data-driven in the same gameplay config.
 - Tests: objective evaluation edges (met exactly at deadline, missed), each event effect applies exactly once, effects serialize.
 
+Status: completed. Career objectives are plain definitions in `src/data/gameplay.ts`: open an airport connection by Year 10, then reach 1,500 weekday riders and hold annual subsidy to $25M or less in Year 20. Results remain pending before their deadline, lock as met/missed at the deadline, and produce a persisted Year 20 win/loss summary with final ridership, subsidy, and capital. Three data-driven events now share thresholds with their simulation news messages and apply once: 40 daily airport station movements add a permanent airport-only 10% demand bonus; a line above $450,000 construction cost per daily rider starts a two-year review and loses $5M from the annual subsidy cap unless ridership improves 25%; and 100 movements at the busiest station add up to 0.15 weighted development capacity across its one-mile catchment. Event IDs, active review, objective results, capacity bonuses, and final outcome all persist. Tests cover exact and off-by-one objective thresholds, each mechanical effect, repeated evaluation, council expiry, model impact, and persistence.
+
 ## Phase 5 — Map life
 
 Pure theater, disproportionate payoff. No model impact.

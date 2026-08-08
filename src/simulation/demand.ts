@@ -48,14 +48,17 @@ export function createDemandMatrix(
 
       const crowDistance = distanceMiles(origin.centroid, destination.centroid);
       const effectiveDistance = Math.max(crowDistance, assumptions.minimumGravityDistanceMiles);
-      const specialGenerator =
+      const isAirportGenerator =
         distanceMiles(destination.centroid, assumptions.airportCoordinate) <=
-          assumptions.specialGeneratorRadiusMiles ||
+        assumptions.specialGeneratorRadiusMiles;
+      const isUwfGenerator =
         distanceMiles(destination.centroid, assumptions.uwfCoordinate) <=
-          assumptions.specialGeneratorRadiusMiles;
-      const specialGeneratorMultiplier = specialGenerator
-        ? 1 + assumptions.specialGeneratorDemandBonus
-        : 1;
+        assumptions.specialGeneratorRadiusMiles;
+      const specialGeneratorMultiplier = isAirportGenerator
+        ? 1 + assumptions.specialGeneratorDemandBonus + assumptions.airportEventDemandBonus
+        : isUwfGenerator
+          ? 1 + assumptions.specialGeneratorDemandBonus
+          : 1;
       const baseWeight =
         (origin.population * destination.jobs) / effectiveDistance ** assumptions.gravityDistanceExponent;
       const weight = baseWeight * specialGeneratorMultiplier;

@@ -38,6 +38,7 @@ npm run build
 - Keep the classic manual-run Sandbox workflow, or switch a scenario to Career mode for debounced live simulation with latest-change-wins worker scheduling.
 - Use advisory capital and operating budgets in Sandbox, or persistent hard capital funds in Career. Career construction spends funds, demolition returns 50%, and one-time ridership, access, and crowding milestones award new grants.
 - Advance the Career clock one year at a time. New and upgraded lines remain under construction for a technology- and mileage-based duration, then begin carrying riders and incurring operating cost; annual subsidy overruns pause for a player choice.
+- Pursue deadline-based Career objectives through Year 20 while deterministic airport, council-review, and station-development events change demand, subsidy support, and growth capacity.
 - Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 
 ## Architecture

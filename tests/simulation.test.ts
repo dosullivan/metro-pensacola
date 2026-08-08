@@ -316,6 +316,16 @@ describe('simulation primitives', () => {
       bonusAssumptions.totalDailyRegionalTrips,
       8
     );
+
+    const airportEventAssumptions = cloneAssumptions();
+    airportEventAssumptions.specialGeneratorDemandBonus = 0;
+    airportEventAssumptions.airportEventDemandBonus = 0.5;
+    const withAirportEvent = createDemandMatrix(testZones, airportEventAssumptions);
+    expect(tripsToAirport(withAirportEvent)).toBeGreaterThan(tripsToAirport(baseline));
+    expect(withAirportEvent.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      airportEventAssumptions.totalDailyRegionalTrips,
+      8
+    );
   });
 
   it('snaps route clicks to nearby OSM road corridors', () => {
@@ -1003,6 +1013,35 @@ describe('development and deterministic runs', () => {
     expect(projected[0].developmentCapacityUsed).toBeCloseTo(0.152, 8);
     expect(grown.developmentCapacity).toBeCloseTo(0.648, 8);
     expect(grown.households).toBe(Math.round(grown.population / assumptions.averageHouseholdSize));
+  });
+
+  it('applies persisted station-boom capacity bonuses to future development', () => {
+    const scenario: Scenario = {
+      id: 'capacity-event',
+      name: 'Capacity Event',
+      gameMode: 'career',
+      autoSimulationEnabled: false,
+      lines: [testLine()],
+      assumptions: cloneAssumptions(),
+      simulationYear: 10,
+      budgetLimitsEnabled: true,
+      career: createCareerProgress()
+    };
+    const baseline = runSimulation(scenario, testZones);
+    const withBonus = runSimulation(
+      {
+        ...scenario,
+        career: {
+          ...scenario.career!,
+          developmentCapacityBonuses: { origin: 0.2 }
+        }
+      },
+      testZones
+    );
+    const baselineOrigin = baseline.zoneResults.find((zone) => zone.zoneId === 'origin');
+    const bonusOrigin = withBonus.zoneResults.find((zone) => zone.zoneId === 'origin');
+
+    expect(bonusOrigin?.populationGrowth ?? 0).toBeGreaterThan(baselineOrigin?.populationGrowth ?? 0);
   });
 
   it('identifies an airport station by coordinates rather than its name', () => {

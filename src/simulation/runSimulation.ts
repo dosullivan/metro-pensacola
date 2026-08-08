@@ -21,7 +21,7 @@ import { calculateAccessibilityScores } from './accessibility';
 import { applyDevelopmentGrowth, projectDevelopment } from './development';
 import { calculateDailyRegionalTrips } from './demand';
 import { distanceMiles } from './geo';
-import { isLineOpen } from '../data/gameplay';
+import { GAMEPLAY_EVENTS, isLineOpen } from '../data/gameplay';
 
 function lineResults(
   scenario: Scenario,
@@ -138,15 +138,23 @@ function buildMessages(results: {
   }
 
   const messages: SimulationMessage[] = [];
+  const eventThreshold = (type: (typeof GAMEPLAY_EVENTS)[number]['type']) =>
+    GAMEPLAY_EVENTS.find((event) => event.type === type)?.threshold ?? Number.POSITIVE_INFINITY;
   const topStation = [...results.stationResults].sort(
     (a, b) => b.entries + b.exits + b.transfers - (a.entries + a.exits + a.transfers)
   )[0];
-  const topLine = [...results.lineResults].sort((a, b) => b.weekdayRidership - a.weekdayRidership)[0];
+  const questionedLine = [...results.lineResults]
+    .filter((line) => line.weekdayRidership > 0)
+    .sort(
+      (a, b) =>
+        b.constructionCost / b.weekdayRidership -
+        a.constructionCost / a.weekdayRidership
+    )[0];
   const airportStation = results.stationResults.find(
     (station) => station.stationId === results.airportStationId
   );
 
-  if (topStation && topStation.entries + topStation.exits > 2200) {
+  if (topStation && topStation.entries + topStation.exits >= eventThreshold('station-capacity')) {
     const nearbyGrowth = results.zoneResults
       .filter((zone) => topStation.catchment.zoneIdsOneMile.includes(zone.zoneId))
       .reduce(
@@ -163,15 +171,21 @@ function buildMessages(results: {
     });
   }
 
-  if (topLine && topLine.weekdayRidership > 0 && topLine.constructionCost / topLine.weekdayRidership > 450_000) {
+  if (
+    questionedLine &&
+    questionedLine.constructionCost / questionedLine.weekdayRidership >= eventThreshold('council-review')
+  ) {
     messages.push({
       id: 'council-questions',
-      title: `CITY COUNCIL QUESTIONS ${topLine.lineName.toUpperCase()}`,
-      body: `Construction cost is high relative to demand: ${Math.round(topLine.weekdayRidership).toLocaleString()} daily riders for this line.`
+      title: `CITY COUNCIL QUESTIONS ${questionedLine.lineName.toUpperCase()}`,
+      body: `Construction cost is high relative to demand: ${Math.round(questionedLine.weekdayRidership).toLocaleString()} daily riders for this line.`
     });
   }
 
-  if (airportStation && airportStation.entries + airportStation.exits > 900) {
+  if (
+    airportStation &&
+    airportStation.entries + airportStation.exits >= eventThreshold('airport-demand')
+  ) {
     messages.push({
       id: 'airport-success',
       title: 'AIRPORT CONNECTION SUCCESSFUL',
@@ -191,32 +205,44 @@ function buildMessages(results: {
 }
 
 export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): SimulationResults {
+  const capacityBonuses = scenario.gameMode === 'career'
+    ? scenario.career?.developmentCapacityBonuses
+    : undefined;
+  const simulationBaseZones = capacityBonuses && Object.keys(capacityBonuses).length > 0
+    ? baseZones.map((zone) => ({
+        ...zone,
+        developmentCapacity: Math.min(
+          1,
+          zone.developmentCapacity + (capacityBonuses[zone.id] ?? 0)
+        )
+      }))
+    : baseZones;
   const openLines =
     scenario.gameMode === 'career'
       ? scenario.lines.filter((line) => isLineOpen(line, scenario.simulationYear))
       : scenario.lines;
   const openLineIds = new Set(openLines.map((line) => line.id));
   const serviceScenario = { ...scenario, lines: openLines };
-  const firstPassRidership = estimateNetworkRidership(openLines, baseZones, scenario.assumptions);
-  const firstPassAccessibility = calculateAccessibilityScores(openLines, baseZones, scenario.assumptions);
+  const firstPassRidership = estimateNetworkRidership(openLines, simulationBaseZones, scenario.assumptions);
+  const firstPassAccessibility = calculateAccessibilityScores(openLines, simulationBaseZones, scenario.assumptions);
   const firstPassDevelopment = projectDevelopment(
-    baseZones,
+    simulationBaseZones,
     firstPassAccessibility,
     firstPassRidership.zoneTransitTrips,
     scenario.assumptions,
     scenario.simulationYear
   );
-  let zones = baseZones;
+  let zones = simulationBaseZones;
   let ridership = firstPassRidership;
   let accessibility = firstPassAccessibility;
   let zoneResults = firstPassDevelopment;
 
   if (scenario.simulationYear > 0) {
-    zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment, scenario.assumptions);
-    ridership = estimateNetworkRidership(openLines, zones, scenario.assumptions, { baseZones });
+    zones = applyDevelopmentGrowth(simulationBaseZones, firstPassDevelopment, scenario.assumptions);
+    ridership = estimateNetworkRidership(openLines, zones, scenario.assumptions, { baseZones: simulationBaseZones });
     accessibility = calculateAccessibilityScores(openLines, zones, scenario.assumptions);
     zoneResults = projectDevelopment(
-      baseZones,
+      simulationBaseZones,
       accessibility,
       ridership.zoneTransitTrips,
       scenario.assumptions,
@@ -229,7 +255,7 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     scenario.assumptions
   );
   const annualOperatingCost = calculateScenarioOperatingCost(openLines, scenario.assumptions);
-  const modeledDailyRegionalTrips = calculateDailyRegionalTrips(baseZones, zones, scenario.assumptions);
+  const modeledDailyRegionalTrips = calculateDailyRegionalTrips(simulationBaseZones, zones, scenario.assumptions);
   const dailyRidership = ridership.dailyRidership;
   const annualRidership = dailyRidership * scenario.assumptions.annualizationFactor;
   const fareRevenue = annualRidership * scenario.assumptions.defaultFare;
@@ -250,6 +276,10 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     scenario.assumptions.airportCoordinate,
     scenario.assumptions.specialGeneratorRadiusMiles
   );
+  const airportStation = stations.find((station) => station.stationId === airportStationId);
+  const airportStationMovements = airportStation
+    ? airportStation.entries + airportStation.exits
+    : 0;
 
   return {
     baseDailyRegionalTrips: scenario.assumptions.totalDailyRegionalTrips,
@@ -272,6 +302,8 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
       scenario.assumptions.co2KgPerVehicleTrip,
     populationWithinWalkingDistance: systemCatchment.population,
     jobsWithinWalkingDistance: systemCatchment.jobs,
+    airportConnected: airportStationId !== undefined,
+    airportStationMovements,
     lineResults: lines,
     stationResults: stations,
     zoneResults,
