@@ -1,6 +1,18 @@
 import type { SimulationAssumptions, SimulationZone, TransitLine } from '../types';
 import { buildTransitGraph, transitTimesFromOrigin } from './routing';
 
+export function accessibilityWeight(
+  travelMinutes: number,
+  assumptions: SimulationAssumptions
+): number {
+  return 1 / (
+    1 + Math.exp(
+      assumptions.accessibilityDecayBeta *
+        (travelMinutes - assumptions.accessibilityMidpointMinutes)
+    )
+  );
+}
+
 export function calculateAccessibilityScores(
   lines: TransitLine[],
   zones: SimulationZone[],
@@ -25,9 +37,10 @@ export function calculateAccessibilityScores(
         continue;
       }
       const path = originPaths.pathTo(destination.centroid);
-      if (path && path.totalMinutes <= 30) {
-        reachableJobs += destination.jobs;
-        reachablePopulation += destination.population;
+      if (path) {
+        const weight = accessibilityWeight(path.totalMinutes, assumptions);
+        reachableJobs += destination.jobs * weight;
+        reachablePopulation += destination.population * weight;
       }
     }
     const jobScore = reachableJobs / totalJobs;

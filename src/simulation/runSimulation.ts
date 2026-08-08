@@ -19,6 +19,7 @@ import { estimateNetworkRidership } from './ridership';
 import { calculateAccessibilityScores } from './accessibility';
 import { applyDevelopmentGrowth, projectDevelopment } from './development';
 import { calculateDailyRegionalTrips } from './demand';
+import { distanceMiles } from './geo';
 
 function lineResults(
   scenario: Scenario,
@@ -76,12 +77,28 @@ function stationResults(
   );
 }
 
+export function nearestStationIdWithinRadius(
+  scenario: Scenario,
+  coordinate: [number, number],
+  radiusMiles: number
+): string | undefined {
+  return scenario.lines
+    .flatMap((line) => line.stations)
+    .map((station) => ({
+      stationId: station.id,
+      distance: distanceMiles(station.coordinate, coordinate)
+    }))
+    .filter(({ distance }) => distance <= radiusMiles)
+    .sort((a, b) => a.distance - b.distance)[0]?.stationId;
+}
+
 function buildMessages(results: {
   lineResults: LineResults[];
   stationResults: StationResults[];
   zoneResults: ZoneResults[];
   constructionCost: number;
   dailyRidership: number;
+  airportStationId?: string;
 }): SimulationMessage[] {
   if (!results.lineResults.some((line) => line.stationCount >= 2)) {
     return [
@@ -98,7 +115,9 @@ function buildMessages(results: {
     (a, b) => b.entries + b.exits + b.transfers - (a.entries + a.exits + a.transfers)
   )[0];
   const topLine = [...results.lineResults].sort((a, b) => b.weekdayRidership - a.weekdayRidership)[0];
-  const airportStation = results.stationResults.find((station) => /airport/i.test(station.stationName));
+  const airportStation = results.stationResults.find(
+    (station) => station.stationId === results.airportStationId
+  );
 
   if (topStation && topStation.entries + topStation.exits > 2200) {
     const nearbyGrowth = results.zoneResults
@@ -154,7 +173,7 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
   let zoneResults = firstPassDevelopment;
 
   if (scenario.simulationYear > 0) {
-    zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment);
+    zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment, scenario.assumptions);
     ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions, { baseZones });
     accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
     zoneResults = projectDevelopment(
@@ -183,6 +202,11 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     ridership.stationExits,
     ridership.stationTransfers
   );
+  const airportStationId = nearestStationIdWithinRadius(
+    scenario,
+    scenario.assumptions.airportCoordinate,
+    scenario.assumptions.specialGeneratorRadiusMiles
+  );
 
   return {
     baseDailyRegionalTrips: scenario.assumptions.totalDailyRegionalTrips,
@@ -210,7 +234,8 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
       stationResults: stations,
       zoneResults,
       constructionCost,
-      dailyRidership
+      dailyRidership,
+      airportStationId
     }),
     generatedAt: 'deterministic-simulation'
   };

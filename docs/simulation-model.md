@@ -64,7 +64,12 @@ The model creates aggregate origin-destination demand between simulation zones:
 rawDemand(i,j) =
   population(i) * jobs(j)
   / max(distance(i,j), minimumDistance)^gravityDistanceExponent
+
+specialGeneratorDemand(i,j) =
+  rawDemand(i,j) * (1 + specialGeneratorDemandBonus)
 ```
+
+The special-generator multiplier applies when the destination centroid is within the configured radius of Pensacola International Airport or UWF. The complete weighted matrix is still normalized to the same regional trip total, so the bonus redistributes destinations rather than creating trips from nothing.
 
 The base-year raw matrix is normalized to `totalDailyRegionalTrips`. Future-year demand scales with the average growth factor for regional population and jobs:
 
@@ -85,6 +90,12 @@ carTime =
   roadDistance / averageCarSpeed
   + parkingPenalty * destinationEmploymentIntensity
   + congestionPenalty * densityIntensity
+
+destinationEmploymentIntensity =
+  clamp(destinationJobs / carEmploymentNormalizationJobs, 0, 1)
+
+densityIntensity =
+  clamp(averageOriginDestinationDensity / carDensityNormalization, 0, 1)
 ```
 
 Road distance is approximated as straight-line distance multiplied by a configurable circuity factor.
@@ -98,7 +109,7 @@ Transit routing uses Dijkstra over a station graph:
 - Adjacent stations on the same line are connected by in-vehicle time.
 - Arriving at a non-terminal station adds the technology's dwell time; an end-to-end trip on an N-station line incurs N−2 dwells.
 - Stations within 400 feet receive transfer edges. In build mode, placing or dragging a stop near a stop on another line snaps to that stop location so the transfer is explicit.
-- Transfers add a penalty, and boarding the next line adds its wait time.
+- Transfers add the actual walk time between the two station coordinates plus a smaller fixed penalty, and boarding the next line adds its wait time.
 
 Ridership and accessibility run one multi-source, binary-heap Dijkstra search per origin zone and reuse its station paths across all destination zones. Present Day simulations reuse the initial ridership and accessibility pass; future-year simulations run a second pass after applying development growth.
 
@@ -112,7 +123,8 @@ transitPhysicalTime =
   + averageWaitTime
   + inVehicleTime
   + intermediateStopDwellTime
-  + transferPenalty
+  + transferWalkTime
+  + fixedTransferPenalty
   + destinationWalkTime
 
 transitGeneralizedTime =
@@ -125,6 +137,17 @@ Average wait time:
 ```text
 waitTime = headway / 2
 ```
+
+## Accessibility
+
+Accessibility uses the same transit paths, but destinations contribute with a smooth logistic travel-time weight instead of an all-or-nothing 30-minute cutoff:
+
+```text
+accessibilityWeight(t) =
+  1 / (1 + exp(accessibilityDecayBeta * (t - accessibilityMidpointMinutes)))
+```
+
+With the defaults, a 30-minute destination receives 50% weight; closer destinations receive progressively more and farther destinations progressively less.
 
 ## Mode Share and Ridership
 
@@ -153,7 +176,7 @@ originMaximumTransitShare =
   + (1 - maxTransitModeShare) * zeroVehicleHouseholdRate
 ```
 
-The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo corridor has a gameplay calibration band of 75–250 weekday riders and currently produces about 94. These are gameplay calibrations rather than a regional forecast.
+The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo corridor has a gameplay calibration band of 75–250 weekday riders. This is a gameplay calibration rather than a regional forecast.
 
 The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 
@@ -215,24 +238,27 @@ For each zone:
 
 ```text
 developmentPressure =
-  accessibilityScore * 0.55
-  + transitSuccess * 0.25
-  + downtownPull * 0.20
+  accessibilityScore * developmentAccessibilityWeight
+  + transitSuccess * developmentTransitSuccessWeight
+  + downtownPull * developmentDowntownWeight
 ```
 
 `transitSuccess` uses transit activity credited at both the origin and destination end of each trip, so employment destinations as well as residential origins receive development credit.
 
-Growth is then limited by development capacity:
+Growth compounds in five-year steps and consumes the remaining development capacity after each step:
 
 ```text
-growth =
+periodGrowth =
   developmentGrowthRatePerFiveYears
-  * (years / 5)
-  * developmentCapacity
+  * remainingDevelopmentCapacity
   * developmentPressure
+
+growthFactor = growthFactor * (1 + periodGrowth)
+remainingDevelopmentCapacity =
+  max(0, remainingDevelopmentCapacity - periodGrowth)
 ```
 
-The model applies this growth to population, housing units, employment, commercial square footage, and land value index.
+Partial five-year periods are prorated. The model applies the compounded growth to population, housing units, employment, commercial square footage, and land value index. Household size, commercial square feet per job, employment growth share, pressure weights, and car-time normalizers are all centralized in `src/data/assumptions.ts`.
 
 ## Known Simplifications
 

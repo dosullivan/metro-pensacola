@@ -158,14 +158,18 @@ export function buildTransitGraph(
         continue;
       }
       if (distanceMiles(a.coordinate, b.coordinate) <= transferMiles) {
+        const transferWalkMinutes = minutesForDistance(
+          distanceMiles(a.coordinate, b.coordinate),
+          assumptions.walkSpeedMph
+        );
         addEdge(baseNode(a.id), {
           to: baseNode(b.id),
-          minutes: assumptions.transferPenaltyMinutes,
+          minutes: assumptions.transferPenaltyMinutes + transferWalkMinutes,
           transferStationId: a.id
         });
         addEdge(baseNode(b.id), {
           to: baseNode(a.id),
-          minutes: assumptions.transferPenaltyMinutes,
+          minutes: assumptions.transferPenaltyMinutes + transferWalkMinutes,
           transferStationId: b.id
         });
       }

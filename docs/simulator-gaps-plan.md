@@ -72,6 +72,8 @@ Status: completed. A 17-minute transit-specific constant yields roughly 12% equa
 4. **Development**: compound growth across 5-year periods instead of linear `years/5`, and deplete `developmentCapacity` as it's consumed.
 5. **Airport as data, not regex**: detect the airport station by proximity to `airportCoordinate` instead of `/airport/i` on names; add a small special-generator demand bonus for airport/UWF zones.
 
+Status: completed. Accessibility now decays smoothly around the configured midpoint, transfer walks use actual station spacing, the listed modeling constants are centralized, development compounds while consuming capacity, and airport/UWF effects use coordinates and configurable generator parameters.
+
 ## Phase 8 — Metrics and stretch goals
 
 - **Annualized cost per rider**: add asset-life + discount-rate assumptions and report annualized capital + operating per annual rider.

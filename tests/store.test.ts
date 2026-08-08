@@ -63,6 +63,19 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.crowdingThreshold;
     delete legacyAssumptions.crowdingTimePenaltyFactor;
     delete legacyAssumptions.transitSpecificConstantMinutes;
+    delete legacyAssumptions.carEmploymentNormalizationJobs;
+    delete legacyAssumptions.carDensityNormalization;
+    delete legacyAssumptions.accessibilityMidpointMinutes;
+    delete legacyAssumptions.accessibilityDecayBeta;
+    delete legacyAssumptions.developmentAccessibilityWeight;
+    delete legacyAssumptions.developmentTransitSuccessWeight;
+    delete legacyAssumptions.developmentDowntownWeight;
+    delete legacyAssumptions.developmentJobsGrowthFactor;
+    delete legacyAssumptions.commercialSqFtPerJob;
+    delete legacyAssumptions.averageHouseholdSize;
+    delete legacyAssumptions.specialGeneratorRadiusMiles;
+    delete legacyAssumptions.specialGeneratorDemandBonus;
+    delete legacyAssumptions.uwfCoordinate;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -94,6 +107,22 @@ describe('scenario store simulation action', () => {
     expect(mergedScenario.assumptions.transitSpecificConstantMinutes).toBe(
       DEFAULT_ASSUMPTIONS.transitSpecificConstantMinutes
     );
+    expect(mergedScenario.assumptions.carEmploymentNormalizationJobs).toBe(
+      DEFAULT_ASSUMPTIONS.carEmploymentNormalizationJobs
+    );
+    expect(mergedScenario.assumptions.accessibilityMidpointMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.accessibilityMidpointMinutes
+    );
+    expect(mergedScenario.assumptions.developmentAccessibilityWeight).toBe(
+      DEFAULT_ASSUMPTIONS.developmentAccessibilityWeight
+    );
+    expect(mergedScenario.assumptions.averageHouseholdSize).toBe(
+      DEFAULT_ASSUMPTIONS.averageHouseholdSize
+    );
+    expect(mergedScenario.assumptions.specialGeneratorDemandBonus).toBe(
+      DEFAULT_ASSUMPTIONS.specialGeneratorDemandBonus
+    );
+    expect(mergedScenario.assumptions.uwfCoordinate).toEqual(DEFAULT_ASSUMPTIONS.uwfCoordinate);
   });
 
   it('shows an explicit notice when there is no usable service', () => {

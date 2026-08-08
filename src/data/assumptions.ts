@@ -50,7 +50,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   walkCatchmentMiles: 0.5,
   extendedCatchmentMiles: 1,
   transferDistanceFeet: 400,
-  transferPenaltyMinutes: 6,
+  transferPenaltyMinutes: 3,
   walkSpeedMph: 3,
   defaultFare: 2,
   valueOfTimeDollarsPerHour: 16,
@@ -64,9 +64,13 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   roadCircuityFactor: 1.22,
   congestionPenaltyMinutes: 5,
   parkingPenaltyMinutes: 4,
+  carEmploymentNormalizationJobs: 15_000,
+  carDensityNormalization: 8_000,
   modeChoiceBeta: 0.09,
   maxTransitModeShare: 0.68,
   transitSpecificConstantMinutes: 17,
+  accessibilityMidpointMinutes: 30,
+  accessibilityDecayBeta: 0.2,
   annualizationFactor: 300,
   vehicleTripsRemovedPerTransitTrip: 0.72,
   co2KgPerVehicleTrip: 3.9,
@@ -75,9 +79,18 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   crowdingThreshold: 0.8,
   crowdingTimePenaltyFactor: 0.5,
   developmentGrowthRatePerFiveYears: 0.055,
+  developmentAccessibilityWeight: 0.55,
+  developmentTransitSuccessWeight: 0.25,
+  developmentDowntownWeight: 0.2,
+  developmentJobsGrowthFactor: 0.85,
+  commercialSqFtPerJob: 340,
+  averageHouseholdSize: 2.28,
   roadSnapDistanceFeet: 650,
+  specialGeneratorRadiusMiles: 1.5,
+  specialGeneratorDemandBonus: 0.15,
   downtownCoordinate: [-87.2154, 30.412],
-  airportCoordinate: [-87.1866, 30.4734]
+  airportCoordinate: [-87.1866, 30.4734],
+  uwfCoordinate: [-87.2181, 30.5495]
 };
 
 export const FREQUENCIES = [5, 10, 15, 20, 30] as const;

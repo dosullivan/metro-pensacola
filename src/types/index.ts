@@ -108,9 +108,13 @@ export interface SimulationAssumptions {
   roadCircuityFactor: number;
   congestionPenaltyMinutes: number;
   parkingPenaltyMinutes: number;
+  carEmploymentNormalizationJobs: number;
+  carDensityNormalization: number;
   modeChoiceBeta: number;
   maxTransitModeShare: number;
   transitSpecificConstantMinutes: number;
+  accessibilityMidpointMinutes: number;
+  accessibilityDecayBeta: number;
   annualizationFactor: number;
   vehicleTripsRemovedPerTransitTrip: number;
   co2KgPerVehicleTrip: number;
@@ -119,9 +123,18 @@ export interface SimulationAssumptions {
   crowdingThreshold: number;
   crowdingTimePenaltyFactor: number;
   developmentGrowthRatePerFiveYears: number;
+  developmentAccessibilityWeight: number;
+  developmentTransitSuccessWeight: number;
+  developmentDowntownWeight: number;
+  developmentJobsGrowthFactor: number;
+  commercialSqFtPerJob: number;
+  averageHouseholdSize: number;
   roadSnapDistanceFeet: number;
+  specialGeneratorRadiusMiles: number;
+  specialGeneratorDemandBonus: number;
   downtownCoordinate: Coordinate;
   airportCoordinate: Coordinate;
+  uwfCoordinate: Coordinate;
 }
 
 export interface Scenario {
@@ -168,6 +181,7 @@ export interface ZoneResults {
   jobsGrowth: number;
   housingGrowth: number;
   landValueGrowth: number;
+  developmentCapacityUsed: number;
 }
 
 export interface SimulationMessage {

@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
-import { calculateAccessibilityScores } from '../src/simulation/accessibility';
+import { accessibilityWeight, calculateAccessibilityScores } from '../src/simulation/accessibility';
 import { calculateStationCatchment } from '../src/simulation/catchment';
 import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
 import { calculateDailyRegionalTrips, createDemandMatrix } from '../src/simulation/demand';
-import { projectDevelopment } from '../src/simulation/development';
+import { applyDevelopmentGrowth, projectDevelopment } from '../src/simulation/development';
 import { distanceMiles, lineMileage } from '../src/simulation/geo';
 import {
   directedSegmentKey,
@@ -17,7 +17,7 @@ import {
   transitModeShare
 } from '../src/simulation/ridership';
 import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
-import { runSimulation } from '../src/simulation/runSimulation';
+import { nearestStationIdWithinRadius, runSimulation } from '../src/simulation/runSimulation';
 import {
   buildRoadNetwork,
   roadPathBetweenCoordinates,
@@ -199,6 +199,24 @@ describe('simulation primitives', () => {
     );
   });
 
+  it('redistributes demand toward airport and university generators without changing trip totals', () => {
+    const baselineAssumptions = cloneAssumptions();
+    baselineAssumptions.specialGeneratorDemandBonus = 0;
+    const bonusAssumptions = cloneAssumptions();
+    bonusAssumptions.specialGeneratorDemandBonus = 0.5;
+    const baseline = createDemandMatrix(testZones, baselineAssumptions);
+    const withBonus = createDemandMatrix(testZones, bonusAssumptions);
+    const tripsToAirport = (pairs: typeof baseline) => pairs
+      .filter((pair) => pair.destinationZoneId === 'jobs')
+      .reduce((sum, pair) => sum + pair.dailyTrips, 0);
+
+    expect(tripsToAirport(withBonus)).toBeGreaterThan(tripsToAirport(baseline));
+    expect(withBonus.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      bonusAssumptions.totalDailyRegionalTrips,
+      8
+    );
+  });
+
   it('snaps route clicks to nearby OSM road corridors', () => {
     const corridors: CorridorCollection = {
       type: 'FeatureCollection',
@@ -307,6 +325,19 @@ describe('simulation primitives', () => {
 });
 
 describe('routing and ridership', () => {
+  it('uses a smooth accessibility decay around the target travel time', () => {
+    const assumptions = cloneAssumptions();
+
+    expect(accessibilityWeight(20, assumptions)).toBeGreaterThan(
+      accessibilityWeight(30, assumptions)
+    );
+    expect(accessibilityWeight(30, assumptions)).toBeCloseTo(0.5, 8);
+    expect(accessibilityWeight(40, assumptions)).toBeLessThan(
+      accessibilityWeight(30, assumptions)
+    );
+    expect(accessibilityWeight(30.01, assumptions)).toBeGreaterThan(0);
+  });
+
   it('converts fares and car operating costs into generalized minutes', () => {
     const assumptions = cloneAssumptions();
     const transitMinutes = estimateTransitGeneralizedTime(20, assumptions);
@@ -483,6 +514,36 @@ describe('routing and ridership', () => {
     expect(path?.lineIds).toContain(lineA.id);
     expect(path?.lineIds).toContain(lineB.id);
     expect(path?.transferStationIds.length).toBeGreaterThan(0);
+  });
+
+  it('charges more transfer time when connecting stations are farther apart', () => {
+    const assumptions = cloneAssumptions();
+    const lineA = testLine({ id: 'transfer-a' });
+    const lineB = testLine({
+      id: 'transfer-b',
+      stations: [
+        {
+          id: 'transfer-b-near',
+          lineId: 'transfer-b',
+          name: 'Near transfer',
+          coordinate: lineA.stations[1].coordinate,
+          order: 0
+        }
+      ]
+    });
+    const spacedLineB = {
+      ...lineB,
+      stations: [{ ...lineB.stations[0], coordinate: [-87.1859, 30.4734] as [number, number] }]
+    };
+    const nearGraph = buildTransitGraph([lineA, lineB], assumptions);
+    const spacedGraph = buildTransitGraph([lineA, spacedLineB], assumptions);
+    const transferMinutes = (graph: ReturnType<typeof buildTransitGraph>) =>
+      graph.get(`station:${lineA.stations[1].id}`)?.find(
+        (edge) => edge.to === `station:${lineB.stations[0].id}`
+      )?.minutes ?? Number.POSITIVE_INFINITY;
+
+    expect(transferMinutes(spacedGraph)).toBeGreaterThan(transferMinutes(nearGraph));
+    expect(transferMinutes(nearGraph)).toBe(assumptions.transferPenaltyMinutes);
   });
 
   it('increases ridership when transit is faster', () => {
@@ -696,6 +757,7 @@ describe('routing and ridership', () => {
     scenario.assumptions.defaultFare = 0;
     scenario.assumptions.carCostPerMile = 0;
     scenario.assumptions.transitSpecificConstantMinutes = 0;
+    scenario.assumptions.specialGeneratorDemandBonus = 0;
     Object.values(scenario.assumptions.technologies).forEach((technology) => {
       technology.dwellMinutesPerStop = 0;
     });
@@ -773,6 +835,47 @@ describe('development and deterministic runs', () => {
     expect(high.reduce((sum, zone) => sum + zone.populationGrowth, 0)).toBeGreaterThan(
       low.reduce((sum, zone) => sum + zone.populationGrowth, 0)
     );
+  });
+
+  it('compounds five-year growth and consumes development capacity', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.developmentGrowthRatePerFiveYears = 0.1;
+    assumptions.developmentAccessibilityWeight = 1;
+    assumptions.developmentTransitSuccessWeight = 0;
+    assumptions.developmentDowntownWeight = 0;
+    const zone = { ...testZones[0], developmentCapacity: 0.8 };
+    const projected = projectDevelopment(
+      [zone],
+      new Map([[zone.id, 1]]),
+      new Map([[zone.id, 0]]),
+      assumptions,
+      10
+    );
+    const grown = applyDevelopmentGrowth([zone], projected, assumptions)[0];
+    const expectedGrowth = (1 + 0.08) * (1 + 0.072) - 1;
+
+    expect(projected[0].populationGrowth).toBe(Math.round(zone.population * expectedGrowth));
+    expect(projected[0].developmentCapacityUsed).toBeCloseTo(0.152, 8);
+    expect(grown.developmentCapacity).toBeCloseTo(0.648, 8);
+    expect(grown.households).toBe(Math.round(grown.population / assumptions.averageHouseholdSize));
+  });
+
+  it('identifies an airport station by coordinates rather than its name', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    const airportStation = scenario.lines[0].stations.find(
+      (station) => station.coordinate[0] === scenario.assumptions.airportCoordinate[0] &&
+        station.coordinate[1] === scenario.assumptions.airportCoordinate[1]
+    );
+    if (!airportStation) {
+      throw new Error('Demo airport station fixture is missing');
+    }
+    airportStation.name = 'Terminal Connector';
+
+    expect(nearestStationIdWithinRadius(
+      scenario,
+      scenario.assumptions.airportCoordinate,
+      scenario.assumptions.specialGeneratorRadiusMiles
+    )).toBe(airportStation.id);
   });
 
   it('grows future regional demand with and without transit', () => {

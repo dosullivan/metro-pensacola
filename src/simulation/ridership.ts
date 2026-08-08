@@ -62,8 +62,16 @@ export function estimateCarTime(
 ): number {
   const roadMiles = distanceMiles(origin.centroid, destination.centroid) * assumptions.roadCircuityFactor;
   const baseTime = minutesForDistance(roadMiles, assumptions.carAverageSpeedMph);
-  const employmentIntensity = clamp(destination.jobs / 15_000, 0, 1);
-  const densityIntensity = clamp((origin.density + destination.density) / 8_000, 0, 1);
+  const employmentIntensity = clamp(
+    destination.jobs / assumptions.carEmploymentNormalizationJobs,
+    0,
+    1
+  );
+  const densityIntensity = clamp(
+    (origin.density + destination.density) / assumptions.carDensityNormalization,
+    0,
+    1
+  );
   return (
     baseTime +
     assumptions.parkingPenaltyMinutes * employmentIntensity +
