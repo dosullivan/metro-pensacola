@@ -84,7 +84,7 @@ Status: completed, including both stretch goals. Annualized cost uses configurab
 
 ## Post-review performance pass
 
-Status: completed. Single-line alternative routing is gated by zone/line catchment eligibility (behavior-preserving, verified against the golden demo test), catchment coverage fractions are cached by zone and buffer signature, and Present Day runs now measure ~0.1 s (1 line) to ~0.4 s (6 lines) versus ~1.0-4.5 s before. The web worker remains deferred until live re-simulation on edit is a feature; at current timings the on-demand run does not need one.
+Status: completed. Single-line alternative routing is gated by zone/line catchment eligibility (behavior-preserving, verified against the golden demo test) and catchment geometry work is cached. Follow-up review found the earlier ~0.1-0.4 s figures were warm-cache timings: cold runs remain ~1.1-4.7 s at 1-6 lines and are ~90% polygon geometry, which caching cannot remove. Two fixes landed in response: coverage-fraction caches are now keyed by zone geometry reference (not zone id, which could collide across differing geometries), and the simulation now runs in a Web Worker in the browser with an `isSimulating` UI state, duplicate-run guard, mid-run-edit guard, and synchronous fallback for tests and worker failures. Verified in the production build via browser automation: the worker chunk loads lazily (~359 kB, no zones duplication), the run executes off the main thread, and the page stays interactive during a cold run.
 
 ## Out of scope for this branch
 

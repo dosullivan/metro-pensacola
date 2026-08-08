@@ -21,14 +21,19 @@ interface ZoneAreaData {
 
 const zoneAreaCache = new WeakMap<object, ZoneAreaData | null>();
 
-const COVERAGE_CACHE_LIMIT = 50_000;
-const coverageCache = new Map<string, number>();
+const COVERAGE_CACHE_LIMIT_PER_GEOMETRY = 1_024;
+const coverageCacheByGeometry = new WeakMap<object, Map<string, number>>();
 
-function cacheCoverage(key: string, fraction: number): number {
-  if (coverageCache.size >= COVERAGE_CACHE_LIMIT) {
-    coverageCache.clear();
+function cacheCoverage(geometryKey: object, signature: string, fraction: number): number {
+  let signatures = coverageCacheByGeometry.get(geometryKey);
+  if (!signatures) {
+    signatures = new Map<string, number>();
+    coverageCacheByGeometry.set(geometryKey, signatures);
   }
-  coverageCache.set(key, fraction);
+  if (signatures.size >= COVERAGE_CACHE_LIMIT_PER_GEOMETRY) {
+    signatures.clear();
+  }
+  signatures.set(signature, fraction);
   return fraction;
 }
 
@@ -82,8 +87,24 @@ function boundsOverlap(a: number[], b: number[]): boolean {
   return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
 }
 
+const BUFFER_CACHE_LIMIT = 4_096;
+const bufferCache = new Map<string, AreaFeature>();
+
+const UNION_CACHE_LIMIT = 32;
+const unionCache = new Map<string, AreaFeature>();
+
 function catchmentArea(coordinate: [number, number], radiusMiles: number): AreaFeature {
-  return buffer(point(coordinate), radiusMiles, { units: 'miles', steps: 32 }) as AreaFeature;
+  const key = `${coordinate[0]},${coordinate[1]}|${radiusMiles}`;
+  const cached = bufferCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  const feature = buffer(point(coordinate), radiusMiles, { units: 'miles', steps: 32 }) as AreaFeature;
+  if (bufferCache.size >= BUFFER_CACHE_LIMIT) {
+    bufferCache.clear();
+  }
+  bufferCache.set(key, feature);
+  return feature;
 }
 
 function coverageFraction(
@@ -94,34 +115,33 @@ function coverageFraction(
   fallbackCoordinates: [number, number][],
   fallbackRadiusMiles: number
 ): number {
-  const cacheKey = `${zone.id}|${catchmentSignature}`;
-  const cached = coverageCache.get(cacheKey);
+  const data = zoneAreaData(zone);
+  if (!data) {
+    return fallbackCoordinates.some(
+      (coordinate) => distanceMiles(coordinate, zone.centroid) <= fallbackRadiusMiles
+    ) ? 1 : 0;
+  }
+
+  const geometryKey = zone.geometry ?? zone.polygon;
+  const cached = coverageCacheByGeometry.get(geometryKey)?.get(catchmentSignature);
   if (cached !== undefined) {
     return cached;
   }
 
-  const data = zoneAreaData(zone);
-  if (!data) {
-    return cacheCoverage(
-      cacheKey,
-      fallbackCoordinates.some(
-        (coordinate) => distanceMiles(coordinate, zone.centroid) <= fallbackRadiusMiles
-      ) ? 1 : 0
-    );
-  }
   if (!boundsOverlap(data.bounds, catchmentBounds)) {
-    return cacheCoverage(cacheKey, 0);
+    return cacheCoverage(geometryKey, catchmentSignature, 0);
   }
   try {
     const overlap = intersect(featureCollection([data.feature, catchment]));
-    return cacheCoverage(cacheKey, overlap ? clamp(area(overlap) / data.squareMeters, 0, 1) : 0);
-  } catch {
     return cacheCoverage(
-      cacheKey,
-      fallbackCoordinates.some(
-        (coordinate) => distanceMiles(coordinate, zone.centroid) <= fallbackRadiusMiles
-      ) ? 1 : 0
+      geometryKey,
+      catchmentSignature,
+      overlap ? clamp(area(overlap) / data.squareMeters, 0, 1) : 0
     );
+  } catch {
+    return fallbackCoordinates.some(
+      (coordinate) => distanceMiles(coordinate, zone.centroid) <= fallbackRadiusMiles
+    ) ? 1 : 0;
   }
 }
 
@@ -195,14 +215,21 @@ export function calculateSystemCatchment(
   if (stationCoordinates.length === 0) {
     return { population: 0, jobs: 0, zoneIds: [] };
   }
-  const stationAreas = stationCoordinates.map((coordinate) =>
-    catchmentArea(coordinate, assumptions.walkCatchmentMiles)
-  );
-  const systemArea = stationAreas.length === 1
-    ? stationAreas[0]
-    : union(featureCollection(stationAreas)) as AreaFeature;
-  const systemBounds = bbox(systemArea);
   const systemSignature = bufferSignature(stationCoordinates, assumptions.walkCatchmentMiles);
+  let systemArea = unionCache.get(systemSignature);
+  if (!systemArea) {
+    const stationAreas = stationCoordinates.map((coordinate) =>
+      catchmentArea(coordinate, assumptions.walkCatchmentMiles)
+    );
+    systemArea = stationAreas.length === 1
+      ? stationAreas[0]
+      : union(featureCollection(stationAreas)) as AreaFeature;
+    if (unionCache.size >= UNION_CACHE_LIMIT) {
+      unionCache.clear();
+    }
+    unionCache.set(systemSignature, systemArea);
+  }
+  const systemBounds = bbox(systemArea);
   const zoneIds: string[] = [];
   let population = 0;
   let jobs = 0;
