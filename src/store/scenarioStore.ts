@@ -945,12 +945,17 @@ export const useScenarioStore = create<ScenarioState>()(
           return;
         }
         const activeScenario = scenarioWithGeometryOnlyLinesRepaired(getActiveScenario(get())).scenario;
-        const simulatedLinesJson = JSON.stringify(activeScenario.lines);
+        const simulationInputsFingerprint = (scenario: Scenario) =>
+          JSON.stringify({
+            lines: scenario.lines,
+            assumptions: scenario.assumptions,
+            simulationYear: scenario.simulationYear
+          });
+        const simulatedFingerprint = simulationInputsFingerprint(activeScenario);
         set((state) => ({
           scenarios: state.scenarios.map((scenario) =>
             scenario.id === activeScenario.id ? activeScenario : scenario
-          ),
-          activeScenarioId: activeScenario.id
+          )
         }));
 
         const finish = (rawResults: SimulationResults) => {
@@ -962,17 +967,19 @@ export const useScenarioStore = create<ScenarioState>()(
 
           set((state) => {
             const currentScenario = state.scenarios.find((scenario) => scenario.id === activeScenario.id);
-            if (currentScenario && JSON.stringify(currentScenario.lines) !== simulatedLinesJson) {
+            if (!currentScenario) {
+              return { isSimulating: false };
+            }
+            if (simulationInputsFingerprint(currentScenario) !== simulatedFingerprint) {
               return {
                 isSimulating: false,
-                simulationNotice: 'The network changed during the run. Run the simulation again.'
+                simulationNotice: 'The scenario changed during the run. Run the simulation again.'
               };
             }
             return {
               scenarios: state.scenarios.map((scenario) =>
-                scenario.id === activeScenario.id ? { ...activeScenario, results } : scenario
+                scenario.id === currentScenario.id ? { ...currentScenario, results } : scenario
               ),
-              activeScenarioId: activeScenario.id,
               isSimulating: false,
               simulationNotice
             };
