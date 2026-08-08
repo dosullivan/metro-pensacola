@@ -138,6 +138,28 @@ P(transit) =
 
 The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 
+## Capacity and Crowding
+
+The first ridership assignment records riders on every directed station-to-station segment. Each line's peak directional segment is converted to a peak-hour load using `peakHourRidershipShare`.
+
+```text
+hourlyCapacity = vehicleCapacity * 60 / headwayMinutes
+loadRatio = peakDailySegmentLoad * peakHourRidershipShare / hourlyCapacity
+```
+
+When `loadRatio` exceeds `crowdingThreshold`, the model increases that line's in-vehicle and dwell time once:
+
+```text
+crowdingTimeMultiplier =
+  1
+  + crowdingTimePenaltyFactor
+  * excessLoadRatio / (1 + excessLoadRatio)
+
+excessLoadRatio = max(0, loadRatio - crowdingThreshold)
+```
+
+This saturating penalty is bounded at `1 + crowdingTimePenaltyFactor`, preventing a single feedback pass from overcorrecting severely overloaded service. The model then performs one crowding-adjusted reassignment. It does not iterate to equilibrium. Uncrowded networks skip the second assignment and retain byte-identical results.
+
 ## System Results
 
 The simulation reports:
@@ -196,6 +218,7 @@ The model applies this growth to population, housing units, employment, commerci
 - No road congestion assignment is performed.
 - Transit travel time uses station-to-station distance with a circuity factor rather than the complete drawn or road-snapped route geometry.
 - Dwell time is a technology-level gameplay assumption applied at non-terminal stops rather than a schedule-derived value.
+- Capacity uses a fixed daily-to-peak-hour share and one crowding feedback pass rather than schedules, vehicle blocks, or a converged transit assignment.
 - Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
 - Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.

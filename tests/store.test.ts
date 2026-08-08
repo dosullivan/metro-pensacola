@@ -57,6 +57,11 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.carCostPerMile;
     delete (legacyAssumptions.technologies?.brt as Partial<Scenario['assumptions']['technologies']['brt']>)
       .dwellMinutesPerStop;
+    delete (legacyAssumptions.technologies?.brt as Partial<Scenario['assumptions']['technologies']['brt']>)
+      .vehicleCapacity;
+    delete legacyAssumptions.peakHourRidershipShare;
+    delete legacyAssumptions.crowdingThreshold;
+    delete legacyAssumptions.crowdingTimePenaltyFactor;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -74,6 +79,16 @@ describe('scenario store simulation action', () => {
     expect(mergedScenario.assumptions.carCostPerMile).toBe(DEFAULT_ASSUMPTIONS.carCostPerMile);
     expect(mergedScenario.assumptions.technologies.brt.dwellMinutesPerStop).toBe(
       DEFAULT_ASSUMPTIONS.technologies.brt.dwellMinutesPerStop
+    );
+    expect(mergedScenario.assumptions.technologies.brt.vehicleCapacity).toBe(
+      DEFAULT_ASSUMPTIONS.technologies.brt.vehicleCapacity
+    );
+    expect(mergedScenario.assumptions.peakHourRidershipShare).toBe(
+      DEFAULT_ASSUMPTIONS.peakHourRidershipShare
+    );
+    expect(mergedScenario.assumptions.crowdingThreshold).toBe(DEFAULT_ASSUMPTIONS.crowdingThreshold);
+    expect(mergedScenario.assumptions.crowdingTimePenaltyFactor).toBe(
+      DEFAULT_ASSUMPTIONS.crowdingTimePenaltyFactor
     );
   });
 

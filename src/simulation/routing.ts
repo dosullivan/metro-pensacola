@@ -7,6 +7,7 @@ interface GraphEdge {
   minutes: number;
   lineId?: string;
   transferStationId?: string;
+  segment?: TransitSegment;
 }
 
 interface PreviousStep {
@@ -40,6 +41,13 @@ export interface TransitPath {
   stationIds: string[];
   lineIds: string[];
   transferStationIds: string[];
+  segments: TransitSegment[];
+}
+
+export interface TransitSegment {
+  lineId: string;
+  fromStationId: string;
+  toStationId: string;
 }
 
 export interface TransitOriginPaths {
@@ -85,7 +93,8 @@ function candidateStations(
 
 export function buildTransitGraph(
   lines: TransitLine[],
-  assumptions: SimulationAssumptions
+  assumptions: SimulationAssumptions,
+  lineTimeMultipliers: ReadonlyMap<string, number> = new Map()
 ): Map<string, GraphEdge[]> {
   const graph = new Map<string, GraphEdge[]>();
   const stations = allStations(lines);
@@ -102,6 +111,7 @@ export function buildTransitGraph(
 
   for (const line of lines) {
     const technology = assumptions.technologies[line.technology];
+    const timeMultiplier = lineTimeMultipliers.get(line.id) ?? 1;
     const orderedStations = [...line.stations].sort((a, b) => a.order - b.order);
 
     for (const station of orderedStations) {
@@ -126,13 +136,15 @@ export function buildTransitGraph(
       const reverseDwellMinutes = index > 0 ? technology.dwellMinutesPerStop : 0;
       addEdge(lineNode(from.id, line.id), {
         to: lineNode(to.id, line.id),
-        minutes: minutes + forwardDwellMinutes,
-        lineId: line.id
+        minutes: (minutes + forwardDwellMinutes) * timeMultiplier,
+        lineId: line.id,
+        segment: { lineId: line.id, fromStationId: from.id, toStationId: to.id }
       });
       addEdge(lineNode(to.id, line.id), {
         to: lineNode(from.id, line.id),
-        minutes: minutes + reverseDwellMinutes,
-        lineId: line.id
+        minutes: (minutes + reverseDwellMinutes) * timeMultiplier,
+        lineId: line.id,
+        segment: { lineId: line.id, fromStationId: to.id, toStationId: from.id }
       });
     }
   }
@@ -309,7 +321,12 @@ function heapDijkstra(graph: Map<string, GraphEdge[]>, starts: CandidateStation[
 function reconstructPath(
   endNode: string,
   previous: Map<string, PreviousStep>
-): { stationIds: string[]; lineIds: string[]; transferStationIds: string[] } {
+): {
+  stationIds: string[];
+  lineIds: string[];
+  transferStationIds: string[];
+  segments: TransitSegment[];
+} {
   const nodes: string[] = [endNode];
   const edges: GraphEdge[] = [];
   let current = endNode;
@@ -331,8 +348,11 @@ function reconstructPath(
   const transferStationIds = edges
     .map((edge) => edge.transferStationId)
     .filter((stationId): stationId is string => Boolean(stationId));
+  const segments = edges
+    .map((edge) => edge.segment)
+    .filter((segment): segment is TransitSegment => Boolean(segment));
 
-  return { stationIds, lineIds, transferStationIds };
+  return { stationIds, lineIds, transferStationIds, segments };
 }
 
 function pathToDestination(

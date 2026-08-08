@@ -25,6 +25,7 @@ export interface TransitTechnology {
   stationCost: number;
   averageSpeedMph: number;
   dwellMinutesPerStop: number;
+  vehicleCapacity: number;
   baseOperatingCostPer15Miles: number;
   color: string;
 }
@@ -113,6 +114,9 @@ export interface SimulationAssumptions {
   vehicleTripsRemovedPerTransitTrip: number;
   co2KgPerVehicleTrip: number;
   baseHeadwayMinutes: FrequencyMinutes;
+  peakHourRidershipShare: number;
+  crowdingThreshold: number;
+  crowdingTimePenaltyFactor: number;
   developmentGrowthRatePerFiveYears: number;
   roadSnapDistanceFeet: number;
   downtownCoordinate: Coordinate;

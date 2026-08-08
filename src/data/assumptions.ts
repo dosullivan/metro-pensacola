@@ -9,6 +9,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       stationCost: 3_000_000,
       averageSpeedMph: 22,
       dwellMinutesPerStop: 0.4,
+      vehicleCapacity: 90,
       baseOperatingCostPer15Miles: 12_000_000,
       color: '#2dd4bf'
     },
@@ -19,6 +20,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       stationCost: 15_000_000,
       averageSpeedMph: 28,
       dwellMinutesPerStop: 0.5,
+      vehicleCapacity: 240,
       baseOperatingCostPer15Miles: 30_000_000,
       color: '#facc15'
     },
@@ -29,6 +31,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       stationCost: 50_000_000,
       averageSpeedMph: 38,
       dwellMinutesPerStop: 0.65,
+      vehicleCapacity: 500,
       baseOperatingCostPer15Miles: 45_000_000,
       color: '#60a5fa'
     },
@@ -39,6 +42,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       stationCost: 120_000_000,
       averageSpeedMph: 42,
       dwellMinutesPerStop: 0.65,
+      vehicleCapacity: 800,
       baseOperatingCostPer15Miles: 70_000_000,
       color: '#f472b6'
     }
@@ -66,6 +70,9 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   vehicleTripsRemovedPerTransitTrip: 0.72,
   co2KgPerVehicleTrip: 3.9,
   baseHeadwayMinutes: 15,
+  peakHourRidershipShare: 0.12,
+  crowdingThreshold: 0.8,
+  crowdingTimePenaltyFactor: 0.5,
   developmentGrowthRatePerFiveYears: 0.055,
   roadSnapDistanceFeet: 650,
   downtownCoordinate: [-87.2154, 30.412],

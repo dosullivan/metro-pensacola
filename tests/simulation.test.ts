@@ -8,6 +8,7 @@ import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from
 import { projectDevelopment } from '../src/simulation/development';
 import { distanceMiles, lineMileage } from '../src/simulation/geo';
 import {
+  directedSegmentKey,
   estimateCarGeneralizedTime,
   estimateNetworkRidership,
   estimateTransitGeneralizedTime
@@ -295,6 +296,13 @@ describe('routing and ridership', () => {
     expect(path).toBeDefined();
     expect(path?.lineIds).toContain(line.id);
     expect(path?.totalMinutes).toBeGreaterThan(0);
+    expect(path?.segments).toEqual([
+      {
+        lineId: line.id,
+        fromStationId: line.stations[0].id,
+        toStationId: line.stations[1].id
+      }
+    ]);
   });
 
   it('adds dwell time when a through trip gains an intermediate station', () => {
@@ -449,6 +457,61 @@ describe('routing and ridership', () => {
     const slow = estimateNetworkRidership([slowLine], testZones, assumptions).dailyRidership;
     const frequent = estimateNetworkRidership([frequentLine], testZones, assumptions).dailyRidership;
     expect(frequent).toBeGreaterThan(slow);
+  });
+
+  it('records riders on directed station-to-station segments', () => {
+    const assumptions = cloneAssumptions();
+    const line = testLine();
+    const result = estimateNetworkRidership([line], testZones, assumptions, { applyCrowding: false });
+    const outboundKey = directedSegmentKey(line.id, line.stations[0].id, line.stations[1].id);
+    const inboundKey = directedSegmentKey(line.id, line.stations[1].id, line.stations[0].id);
+
+    expect(result.segmentRidership.get(outboundKey)).toBeGreaterThan(0);
+    expect(result.segmentRidership.get(inboundKey)).toBeGreaterThan(0);
+  });
+
+  it('reduces ridership when a low-capacity line is overcrowded', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.averageSpeedMph = 28;
+    assumptions.technologies.brt.dwellMinutesPerStop = 0;
+    assumptions.technologies.brt.vehicleCapacity = 5;
+    assumptions.technologies['light-rail'].averageSpeedMph = 28;
+    assumptions.technologies['light-rail'].dwellMinutesPerStop = 0;
+    assumptions.technologies['light-rail'].vehicleCapacity = 5_000;
+    const lowCapacityLine = testLine({ id: 'low-capacity', technology: 'brt' });
+    const highCapacityLine = testLine({ id: 'high-capacity', technology: 'light-rail' });
+    const lowCapacity = estimateNetworkRidership([lowCapacityLine], testZones, assumptions);
+    const highCapacity = estimateNetworkRidership([highCapacityLine], testZones, assumptions);
+
+    expect(lowCapacity.lineCrowdingMultipliers.get(lowCapacityLine.id)).toBeGreaterThan(1);
+    expect(highCapacity.lineCrowdingMultipliers.get(highCapacityLine.id)).toBe(1);
+    expect(highCapacity.dailyRidership).toBeGreaterThan(lowCapacity.dailyRidership);
+  });
+
+  it('relieves crowding when frequency doubles', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 10;
+    const halfHourlyLine = testLine({ id: 'half-hourly', headwayMinutes: 30 });
+    const quarterHourlyLine = testLine({ id: 'quarter-hourly', headwayMinutes: 15 });
+    const halfHourly = estimateNetworkRidership([halfHourlyLine], testZones, assumptions);
+    const quarterHourly = estimateNetworkRidership([quarterHourlyLine], testZones, assumptions);
+
+    expect(halfHourly.lineCrowdingMultipliers.get(halfHourlyLine.id)).toBeGreaterThan(
+      quarterHourly.lineCrowdingMultipliers.get(quarterHourlyLine.id) ?? 1
+    );
+    expect(quarterHourly.dailyRidership).toBeGreaterThan(halfHourly.dailyRidership);
+  });
+
+  it('leaves uncrowded assignment byte-identical to capacity-disabled assignment', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 100_000;
+    const line = testLine();
+    const withoutCapacity = estimateNetworkRidership([line], testZones, assumptions, {
+      applyCrowding: false
+    });
+    const uncrowded = estimateNetworkRidership([line], testZones, assumptions);
+
+    expect(uncrowded).toEqual(withoutCapacity);
   });
 
   it('increases ridership when stations are near population and jobs', () => {

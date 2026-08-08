@@ -41,6 +41,8 @@ Technologies differ only in speed and cost. `lineRidership` counts every rider w
 - Apply a deterministic crowding multiplier to that line's in-vehicle times when peak load / hourly capacity > ~0.8, then re-run the assignment once (single fixed iteration keeps it deterministic and bounded).
 - Tests: equalize technology speeds in fixtures so the test isolates capacity — an overloaded low-capacity line loses riders vs a high-capacity line on the identical alignment; doubling frequency relieves the penalty; uncrowded networks are byte-identical to no-capacity results.
 
+Status: completed. Assignment records directed segment riders, derives hourly capacity from vehicle capacity and headway, and performs at most one crowding-adjusted reassignment.
+
 ## Phase 5 — Destination development credit and demand-growth semantics
 
 Two related corrections with the semantics decided up front.
