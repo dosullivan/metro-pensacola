@@ -78,6 +78,8 @@ describe('scenario store simulation action', () => {
     delete legacyAssumptions.uwfCoordinate;
     delete legacyAssumptions.capitalAssetLifeYears;
     delete legacyAssumptions.capitalDiscountRate;
+    delete legacyAssumptions.pathChoiceBeta;
+    delete legacyAssumptions.pathChoiceMaximumExtraMinutes;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -130,6 +132,10 @@ describe('scenario store simulation action', () => {
     );
     expect(mergedScenario.assumptions.capitalDiscountRate).toBe(
       DEFAULT_ASSUMPTIONS.capitalDiscountRate
+    );
+    expect(mergedScenario.assumptions.pathChoiceBeta).toBe(DEFAULT_ASSUMPTIONS.pathChoiceBeta);
+    expect(mergedScenario.assumptions.pathChoiceMaximumExtraMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.pathChoiceMaximumExtraMinutes
     );
   });
 

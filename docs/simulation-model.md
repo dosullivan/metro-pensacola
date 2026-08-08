@@ -126,6 +126,15 @@ Transit routing uses Dijkstra over a station graph:
 
 Ridership and accessibility run one multi-source, binary-heap Dijkstra search per origin zone and reuse its station paths across all destination zones. Present Day simulations reuse the initial ridership and accessibility pass; future-year simulations run a second pass after applying development growth.
 
+For ridership assignment, the model considers the fastest network path plus the fastest direct path on each usable line. Duplicate paths are removed, and alternatives within `pathChoiceMaximumExtraMinutes` of the fastest path receive logit shares:
+
+```text
+pathWeight(k) = exp(-pathChoiceBeta * (pathMinutes(k) - fastestPathMinutes))
+pathShare(k) = pathWeight(k) / sum(pathWeights)
+```
+
+Equal-time parallel services split riders evenly; slower but still competitive services receive a smaller share. The fastest path continues to determine the overall transit mode share, so adding an inferior duplicate does not create new transit trips by itself.
+
 In-vehicle time between adjacent stations currently uses straight-line station distance multiplied by the configured road-circuity factor. It does not follow every vertex of the displayed route polyline. The polyline is used for map rendering and construction mileage, so changing route bends without changing stations can change capital cost without changing ridership.
 
 Transit generalized time:
@@ -191,7 +200,7 @@ originMaximumTransitShare =
 
 The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo corridor has a gameplay calibration band of 75–250 weekday riders. This is a gameplay calibration rather than a regional forecast.
 
-The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line ridership counts riders assigned to each line used in the fastest path. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
+The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line, station, transfer, and segment ridership are allocated across the eligible path choices. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 
 ## Capacity and Crowding
 
@@ -289,6 +298,7 @@ Partial five-year periods are prorated. The model applies the compounded growth 
 - Transit travel time uses station-to-station distance with a circuity factor rather than the complete drawn or road-snapped route geometry.
 - Dwell time is a technology-level gameplay assumption applied at non-terminal stops rather than a schedule-derived value.
 - Capacity uses a fixed daily-to-peak-hour share and one crowding feedback pass rather than schedules, vehicle blocks, or a converged transit assignment.
+- Path spreading considers the fastest network path and direct single-line alternatives rather than enumerating every possible K-shortest transfer path.
 - Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
 - Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.

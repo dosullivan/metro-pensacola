@@ -115,6 +115,8 @@ export interface SimulationAssumptions {
   modeChoiceBeta: number;
   maxTransitModeShare: number;
   transitSpecificConstantMinutes: number;
+  pathChoiceBeta: number;
+  pathChoiceMaximumExtraMinutes: number;
   accessibilityMidpointMinutes: number;
   accessibilityDecayBeta: number;
   annualizationFactor: number;

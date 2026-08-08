@@ -20,6 +20,7 @@ import {
   estimateNetworkRidership,
   estimateTransitGeneralizedTime,
   maximumTransitShareForOrigin,
+  spreadTransitPaths,
   transitModeShare
 } from '../src/simulation/ridership';
 import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
@@ -748,6 +749,48 @@ describe('routing and ridership', () => {
 
     expect(firstLineResult?.weekdayRidership).toBeGreaterThan(0);
     expect(secondLineResult?.weekdayRidership).toBeGreaterThan(0);
+  });
+
+  it('spreads riders across near-equal parallel paths', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 100_000;
+    const firstLine = testLine({ id: 'parallel-a' });
+    const secondLine = testLine({ id: 'parallel-b' });
+    const result = estimateNetworkRidership([firstLine, secondLine], testZones, assumptions, {
+      applyCrowding: false
+    });
+    const firstRidership = result.lineRidership.get(firstLine.id) ?? 0;
+    const secondRidership = result.lineRidership.get(secondLine.id) ?? 0;
+
+    expect(firstRidership).toBeGreaterThan(0);
+    expect(secondRidership).toBeGreaterThan(0);
+    expect(firstRidership).toBeCloseTo(secondRidership, 8);
+  });
+
+  it('weights a slightly slower path lower and excludes a poor alternative', () => {
+    const assumptions = cloneAssumptions();
+    const line = testLine();
+    const basePath = fastestTransitPath(
+      testZones[0].centroid,
+      testZones[1].centroid,
+      [line],
+      assumptions
+    );
+    if (!basePath) {
+      throw new Error('Path fixture is missing');
+    }
+    const choices = spreadTransitPaths(
+      [
+        basePath,
+        { ...basePath, destinationStationId: 'slower', totalMinutes: basePath.totalMinutes + 2 },
+        { ...basePath, destinationStationId: 'poor', totalMinutes: basePath.totalMinutes + 20 }
+      ],
+      assumptions
+    );
+
+    expect(choices).toHaveLength(2);
+    expect(choices[0].share).toBeGreaterThan(choices[1].share);
+    expect(choices.reduce((sum, choice) => sum + choice.share, 0)).toBeCloseTo(1, 10);
   });
 
   it('decreases ridership when transit travel time is dramatically worse', () => {

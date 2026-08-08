@@ -77,7 +77,7 @@ Status: completed. Accessibility now decays smoothly around the configured midpo
 ## Phase 8 — Metrics and stretch goals
 
 - **Annualized cost per rider**: add asset-life + discount-rate assumptions and report annualized capital + operating per annual rider.
-- Stretch: logit path spreading across near-equal paths (parallel lines currently winner-take-all).
+- Stretch: logit path spreading across near-equal paths. **Completed:** the fastest network path and direct single-line alternatives now receive deterministic logit shares inside a configurable time window.
 - Stretch: area-weighted zone catchments (needs polygons in the sim data path; cheap alternative is distance-decay weighting of centroid contributions).
 
 Status: the required annualized cost-per-rider metric is completed using configurable asset-life and discount-rate assumptions. The two items explicitly labeled Stretch remain optional follow-up work.

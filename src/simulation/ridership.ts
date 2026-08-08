@@ -1,6 +1,11 @@
 import type { SimulationAssumptions, SimulationZone, TransitLine } from '../types';
 import { createDemandMatrix } from './demand';
-import { buildTransitGraph, transitTimesFromOrigin, type TransitOriginPaths } from './routing';
+import {
+  buildTransitGraph,
+  transitTimesFromOrigin,
+  type TransitOriginPaths,
+  type TransitPath
+} from './routing';
 import { clamp, distanceMiles, minutesForDistance } from './geo';
 
 export interface NetworkRidership {
@@ -18,6 +23,46 @@ export interface NetworkRidership {
 export interface RidershipOptions {
   applyCrowding?: boolean;
   baseZones?: SimulationZone[];
+}
+
+export interface WeightedTransitPath {
+  path: TransitPath;
+  share: number;
+}
+
+function pathSignature(path: TransitPath): string {
+  return [
+    path.originStationId,
+    path.destinationStationId,
+    ...path.segments.map(
+      (segment) => `${segment.lineId}:${segment.fromStationId}->${segment.toStationId}`
+    )
+  ].join('|');
+}
+
+export function spreadTransitPaths(
+  paths: TransitPath[],
+  assumptions: SimulationAssumptions
+): WeightedTransitPath[] {
+  const uniquePaths = Array.from(
+    new Map(paths.map((path) => [pathSignature(path), path])).values()
+  ).sort((a, b) => a.totalMinutes - b.totalMinutes || pathSignature(a).localeCompare(pathSignature(b)));
+  const bestMinutes = uniquePaths[0]?.totalMinutes;
+  if (bestMinutes === undefined) {
+    return [];
+  }
+  const eligible = uniquePaths.filter(
+    (path) => path.totalMinutes <= bestMinutes + assumptions.pathChoiceMaximumExtraMinutes
+  );
+  const weights = eligible.map((path) =>
+    Math.exp(-assumptions.pathChoiceBeta * (path.totalMinutes - bestMinutes))
+  );
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+  return eligible.map((path, index) => ({
+    path,
+    share: totalWeight > 0 ? weights[index] / totalWeight : index === 0 ? 1 : 0
+  }));
 }
 
 export function directedSegmentKey(
@@ -144,24 +189,41 @@ function assignNetworkRidership(
   }
 
   const graph = buildTransitGraph(usableLines, assumptions, lineTimeMultipliers);
+  const pathServices = [
+    { lines: usableLines, graph },
+    ...(usableLines.length > 1
+      ? usableLines.map((line) => ({
+        lines: [line],
+        graph: buildTransitGraph([line], assumptions, lineTimeMultipliers)
+      }))
+      : [])
+  ];
   const demand = createDemandMatrix(zones, assumptions, baseZones);
-  const pathsByOrigin = new Map<number, TransitOriginPaths>();
+  const pathsByOrigin = new Map<number, TransitOriginPaths[]>();
 
   for (const od of demand) {
     const origin = zones[od.originIndex];
     const destination = zones[od.destinationIndex];
-    let originPaths = pathsByOrigin.get(od.originIndex);
-    if (!originPaths) {
-      originPaths = transitTimesFromOrigin(origin.centroid, usableLines, assumptions, graph);
-      pathsByOrigin.set(od.originIndex, originPaths);
+    let originPathSets = pathsByOrigin.get(od.originIndex);
+    if (!originPathSets) {
+      originPathSets = pathServices.map((service) =>
+        transitTimesFromOrigin(origin.centroid, service.lines, assumptions, service.graph)
+      );
+      pathsByOrigin.set(od.originIndex, originPathSets);
     }
-    const path = originPaths.pathTo(destination.centroid);
-    if (!path) {
+    const pathChoices = spreadTransitPaths(
+      originPathSets
+        .map((originPaths) => originPaths.pathTo(destination.centroid))
+        .filter((path): path is TransitPath => Boolean(path)),
+      assumptions
+    );
+    const fastestPath = pathChoices[0]?.path;
+    if (!fastestPath) {
       continue;
     }
 
     const carTime = estimateCarTime(origin, destination, assumptions);
-    const transitGeneralizedTime = estimateTransitGeneralizedTime(path.totalMinutes, assumptions);
+    const transitGeneralizedTime = estimateTransitGeneralizedTime(fastestPath.totalMinutes, assumptions);
     const carGeneralizedTime = estimateCarGeneralizedTime(origin, destination, assumptions);
     const share = transitModeShare(
       transitGeneralizedTime,
@@ -175,29 +237,46 @@ function assignNetworkRidership(
     }
 
     ridership.dailyRidership += riders;
-    ridership.weightedTimeSavings += riders * Math.max(0, carTime - path.totalMinutes);
-    ridership.stationEntries.set(path.originStationId, (ridership.stationEntries.get(path.originStationId) ?? 0) + riders);
-    ridership.stationExits.set(
-      path.destinationStationId,
-      (ridership.stationExits.get(path.destinationStationId) ?? 0) + riders
-    );
     ridership.zoneTransitTrips.set(origin.id, (ridership.zoneTransitTrips.get(origin.id) ?? 0) + riders);
     ridership.zoneTransitTrips.set(
       destination.id,
       (ridership.zoneTransitTrips.get(destination.id) ?? 0) + riders
     );
 
-    for (const stationId of path.transferStationIds) {
-      ridership.stationTransfers.set(stationId, (ridership.stationTransfers.get(stationId) ?? 0) + riders);
-    }
+    for (const choice of pathChoices) {
+      const pathRiders = riders * choice.share;
+      const path = choice.path;
+      ridership.weightedTimeSavings += pathRiders * Math.max(0, carTime - path.totalMinutes);
+      ridership.stationEntries.set(
+        path.originStationId,
+        (ridership.stationEntries.get(path.originStationId) ?? 0) + pathRiders
+      );
+      ridership.stationExits.set(
+        path.destinationStationId,
+        (ridership.stationExits.get(path.destinationStationId) ?? 0) + pathRiders
+      );
 
-    for (const lineId of path.lineIds) {
-      ridership.lineRidership.set(lineId, (ridership.lineRidership.get(lineId) ?? 0) + riders);
-    }
+      for (const stationId of path.transferStationIds) {
+        ridership.stationTransfers.set(
+          stationId,
+          (ridership.stationTransfers.get(stationId) ?? 0) + pathRiders
+        );
+      }
 
-    for (const segment of path.segments) {
-      const key = directedSegmentKey(segment.lineId, segment.fromStationId, segment.toStationId);
-      ridership.segmentRidership.set(key, (ridership.segmentRidership.get(key) ?? 0) + riders);
+      for (const lineId of path.lineIds) {
+        ridership.lineRidership.set(
+          lineId,
+          (ridership.lineRidership.get(lineId) ?? 0) + pathRiders
+        );
+      }
+
+      for (const segment of path.segments) {
+        const key = directedSegmentKey(segment.lineId, segment.fromStationId, segment.toStationId);
+        ridership.segmentRidership.set(
+          key,
+          (ridership.segmentRidership.get(key) ?? 0) + pathRiders
+        );
+      }
     }
   }
 

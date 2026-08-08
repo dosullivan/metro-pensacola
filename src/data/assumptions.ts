@@ -71,6 +71,8 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
   modeChoiceBeta: 0.09,
   maxTransitModeShare: 0.68,
   transitSpecificConstantMinutes: 17,
+  pathChoiceBeta: 0.25,
+  pathChoiceMaximumExtraMinutes: 10,
   accessibilityMidpointMinutes: 30,
   accessibilityDecayBeta: 0.2,
   annualizationFactor: 300,
