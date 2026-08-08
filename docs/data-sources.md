@@ -9,6 +9,8 @@ The application displays a real Pensacola map with MapLibre GL JS using OpenStre
 
 The map remains the dominant geographic reference. The app does not invent roads or coastlines.
 
+The tile layer is remote rather than bundled. Scenario data remains in browser storage, but the visible basemap requires network access unless the browser already has the needed tiles cached.
+
 ## OSM Corridor Extract
 
 The MVP includes an optional preprocessing path for OpenStreetMap corridors:
@@ -20,6 +22,8 @@ python3 scripts/prepare-osm-data.py \
 ```
 
 This script uses the Overpass API to fetch OSM highway ways in Escambia County and Santa Rosa County by default. The generated file powers the road-snap build toggle for BRT and light rail. Snapping moves stops to the nearest OSM highway within the configured snap distance and draws route geometry between consecutive stops along the extracted road network when a connected path is available.
+
+The corridor file is not part of the initial JavaScript bundle. The browser fetches it the first time Road Snap is enabled and constructs the routable graph client-side. The current full-county file is roughly 34 MB, so enabling the feature can have a noticeable initial loading and processing cost.
 
 Current generated OSM coverage:
 

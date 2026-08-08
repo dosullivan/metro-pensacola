@@ -34,7 +34,7 @@ The app uses real generated geographic/demographic data plus gameplay-derived mo
 - Census/ACS/LODES zones: full Escambia County and Santa Rosa County block groups.
 - OSM road-snapping corridors: full Escambia County and Santa Rosa County OSM relation areas.
 - The Census zone data is bundled into `src/data/pensacola/zones.ts`.
-- The OSM corridor network is a static GeoJSON asset loaded lazily when Road Snap is enabled.
+- The OSM corridor network is a static GeoJSON asset loaded lazily when Road Snap is enabled, then converted into a routable graph in the browser.
 
 Generated data files are intentionally large:
 
@@ -87,10 +87,13 @@ This is not a microscopic traffic simulator. Keep the model deterministic and ag
 
 Increasing capital cost should not change ridership. Faster service, shorter headways, better station placement, and useful transfers should generally increase ridership.
 
+The drawn route polyline controls map appearance and construction mileage. Transit travel time currently uses ordered station-to-station distance with a circuity factor, so route bends alone should not change ridership.
+
 ## Current Limitations
 
 - The full ACS zone dataset makes the production JS bundle large; future work should lazy-load or code-split zone data.
-- The OSM road grid is large but static and lazy-loaded; route snapping may still need spatial indexing for heavier use.
+- The full-county OSM road file is roughly 34 MB. It is lazy-loaded, but graph construction and nearest-segment checks happen in the browser without a spatial index.
+- Demand and accessibility work scales across ordered zone pairs and is repeated for initial and final model passes; larger transit graphs will need routing-performance work.
 - There are no Playwright visual/runtime tests for map interactions yet.
 - Route editing is functional but still basic.
 - ACS/LODES data is real, but land value, development capacity, and commercial square feet remain gameplay-derived.

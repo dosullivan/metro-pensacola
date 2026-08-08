@@ -91,6 +91,8 @@ Transit routing uses Dijkstra over a station graph:
 - Stations within 400 feet receive transfer edges. In build mode, placing or dragging a stop near a stop on another line snaps to that stop location so the transfer is explicit.
 - Transfers add a penalty, and boarding the next line adds its wait time.
 
+In-vehicle time between adjacent stations currently uses straight-line station distance multiplied by the configured road-circuity factor. It does not follow every vertex of the displayed route polyline. The polyline is used for map rendering and construction mileage, so changing route bends without changing stations can change capital cost without changing ridership.
+
 Transit generalized time:
 
 ```text
@@ -176,8 +178,13 @@ The model applies this growth to population, housing units, employment, commerci
 
 - No individual agents are simulated.
 - No road congestion assignment is performed.
+- Transit travel time uses station-to-station distance with a circuity factor rather than the complete drawn or road-snapped route geometry.
 - Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
 - Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.
 - Operating costs are annualized gameplay assumptions.
 - Land value and development capacity are gameplay-derived indicators, not appraisal or parcel data.
+
+## Runtime Characteristics
+
+Demand and accessibility are evaluated across ordered zone pairs. With 296 zones, a model pass considers about 87,000 origin-destination pairs before filtering for usable transit paths. The simulation currently runs initial and final ridership/accessibility passes so long-range development can feed back into demand. This is deterministic and manageable for the current demonstration network, but it is the main scaling constraint as station and line counts grow.

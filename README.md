@@ -2,7 +2,7 @@
 
 Metro Pensacola is a playable browser-based urban transit planning simulation for the Pensacola, Florida area. It combines a real MapLibre/OpenStreetMap basemap with lightweight transit drawing, station placement, scenario storage, ridership modeling, costs, accessibility, and long-range development effects.
 
-The MVP is frontend-only. It runs locally with Vite and stores scenarios in browser storage.
+The MVP is frontend-only. It runs locally with Vite and automatically persists scenarios and UI state in browser storage. The visible basemap still requires network access to load OpenStreetMap tiles.
 
 ## Run
 
@@ -34,7 +34,8 @@ npm run build
 - Run the deterministic aggregate simulation.
 - Inspect zones, lines, and stations.
 - Toggle population, employment, density, accessibility, ridership, development, land value, and station catchment overlays.
-- Save, load, duplicate, delete, and compare scenarios from browser storage.
+- Automatically persist scenarios in browser storage, with controls to switch, duplicate, delete, restore, and compare them.
+- Show advisory capital and operating budgets; enabling Budget Limits highlights overruns but does not block construction.
 - Start from a clearly labeled conceptual demo corridor from downtown Pensacola to UWF via Baptist Health, Cordova Mall, PNS airport, and Ferry Pass.
 
 ## Architecture
@@ -58,6 +59,8 @@ src/
     ridership.ts
     routing.ts
     runSimulation.ts
+    snapping.ts
+    transfers.ts
   store/
     scenarioStore.ts
   types/
@@ -67,6 +70,8 @@ tests/
 ```
 
 The simulation modules are independent of React and are covered by unit tests. React components read and write scenarios through Zustand.
+
+Route geometry has two distinct roles in the current model: the drawn polyline determines displayed alignment and construction mileage, while in-vehicle travel time is calculated between ordered station coordinates using a road-circuity factor. Route bends therefore change cost and appearance without changing ridership unless station positions or ordering also change.
 
 ## Data
 
@@ -105,3 +110,10 @@ Pass `--bbox west,south,east,north` only when you intentionally want a smaller c
 ## Modeling Status
 
 This is not a microscopic traffic simulator. It uses aggregate zone-to-zone demand, Dijkstra transit routing, configurable costs, and explainable assumptions. See [docs/simulation-model.md](docs/simulation-model.md).
+
+## Current Technical Constraints
+
+- `src/data/pensacola/zones.ts` is imported synchronously and is roughly 10 MB before bundling, so production startup and bundle size need future optimization through lazy loading or code splitting.
+- The roughly 34 MB OSM corridor GeoJSON is loaded only after Road Snap is enabled. Its road graph is then built in the browser, which can produce a noticeable one-time delay.
+- Simulation work grows with the number of zone pairs and transit graph size. The current 296-zone dataset creates about 87,000 ordered origin-destination pairs per model pass, so larger networks will eventually need routing and demand-performance work.
+- Scenarios are local to a browser profile. There is no account sync, backend storage, or import/export workflow yet.
