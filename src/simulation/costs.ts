@@ -28,3 +28,25 @@ export function calculateScenarioCapitalCost(lines: TransitLine[], assumptions: 
 export function calculateScenarioOperatingCost(lines: TransitLine[], assumptions: SimulationAssumptions): number {
   return lines.reduce((sum, line) => sum + calculateAnnualOperatingCost(line, assumptions), 0);
 }
+
+export function capitalRecoveryFactor(assetLifeYears: number, discountRate: number): number {
+  if (!Number.isFinite(assetLifeYears) || assetLifeYears <= 0) {
+    return 0;
+  }
+  const rate = Math.max(0, discountRate);
+  if (rate === 0) {
+    return 1 / assetLifeYears;
+  }
+  const growthFactor = (1 + rate) ** assetLifeYears;
+  return rate * growthFactor / (growthFactor - 1);
+}
+
+export function calculateAnnualizedCapitalCost(
+  constructionCost: number,
+  assumptions: SimulationAssumptions
+): number {
+  return constructionCost * capitalRecoveryFactor(
+    assumptions.capitalAssetLifeYears,
+    assumptions.capitalDiscountRate
+  );
+}

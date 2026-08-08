@@ -93,7 +93,7 @@ The drawn route polyline controls map appearance and construction mileage. Trans
 
 - The full ACS zone dataset makes the production JS bundle large; future work should lazy-load or code-split zone data.
 - The full-county OSM road file is roughly 34 MB. It is lazy-loaded, but graph construction and nearest-segment checks happen in the browser without a spatial index.
-- Demand and accessibility work scales across ordered zone pairs and is repeated for initial and final model passes; larger transit graphs will need routing-performance work.
+- Demand and accessibility score ordered zone pairs, but heap-based transit routing is cached per origin. Future-year runs use initial and final model passes; Present Day reuses the first pass.
 - There are no Playwright visual/runtime tests for map interactions yet.
 - Route editing is functional but still basic.
 - ACS/LODES data is real, but land value, development capacity, and commercial square feet remain gameplay-derived.

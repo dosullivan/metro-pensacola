@@ -50,6 +50,95 @@ describe('scenario store simulation action', () => {
     expect(useScenarioStore.getState().simulationNotice).toContain('Simulation complete');
   });
 
+  it('merges new assumption defaults into legacy persisted scenarios', () => {
+    const legacyScenario = cloneScenario(DEMO_SCENARIO);
+    const legacyAssumptions = legacyScenario.assumptions as Partial<Scenario['assumptions']>;
+    delete legacyAssumptions.valueOfTimeDollarsPerHour;
+    delete legacyAssumptions.carCostPerMile;
+    delete (legacyAssumptions.technologies?.brt as Partial<Scenario['assumptions']['technologies']['brt']>)
+      .dwellMinutesPerStop;
+    delete (legacyAssumptions.technologies?.brt as Partial<Scenario['assumptions']['technologies']['brt']>)
+      .vehicleCapacity;
+    delete legacyAssumptions.peakHourRidershipShare;
+    delete legacyAssumptions.crowdingThreshold;
+    delete legacyAssumptions.crowdingTimePenaltyFactor;
+    delete legacyAssumptions.transitSpecificConstantMinutes;
+    delete legacyAssumptions.carEmploymentNormalizationJobs;
+    delete legacyAssumptions.carDensityNormalization;
+    delete legacyAssumptions.accessibilityMidpointMinutes;
+    delete legacyAssumptions.accessibilityDecayBeta;
+    delete legacyAssumptions.developmentAccessibilityWeight;
+    delete legacyAssumptions.developmentTransitSuccessWeight;
+    delete legacyAssumptions.developmentDowntownWeight;
+    delete legacyAssumptions.developmentJobsGrowthFactor;
+    delete legacyAssumptions.commercialSqFtPerJob;
+    delete legacyAssumptions.averageHouseholdSize;
+    delete legacyAssumptions.specialGeneratorRadiusMiles;
+    delete legacyAssumptions.specialGeneratorDemandBonus;
+    delete legacyAssumptions.uwfCoordinate;
+    delete legacyAssumptions.capitalAssetLifeYears;
+    delete legacyAssumptions.capitalDiscountRate;
+    delete legacyAssumptions.pathChoiceBeta;
+    delete legacyAssumptions.pathChoiceMaximumExtraMinutes;
+    const currentState = useScenarioStore.getState();
+    const merge = useScenarioStore.persist.getOptions().merge;
+    const mergedState = merge?.(
+      {
+        scenarios: [legacyScenario],
+        activeScenarioId: legacyScenario.id
+      },
+      currentState
+    ) as typeof currentState;
+    const mergedScenario = selectActiveScenario(mergedState);
+
+    expect(mergedScenario.assumptions.valueOfTimeDollarsPerHour).toBe(
+      DEFAULT_ASSUMPTIONS.valueOfTimeDollarsPerHour
+    );
+    expect(mergedScenario.assumptions.carCostPerMile).toBe(DEFAULT_ASSUMPTIONS.carCostPerMile);
+    expect(mergedScenario.assumptions.technologies.brt.dwellMinutesPerStop).toBe(
+      DEFAULT_ASSUMPTIONS.technologies.brt.dwellMinutesPerStop
+    );
+    expect(mergedScenario.assumptions.technologies.brt.vehicleCapacity).toBe(
+      DEFAULT_ASSUMPTIONS.technologies.brt.vehicleCapacity
+    );
+    expect(mergedScenario.assumptions.peakHourRidershipShare).toBe(
+      DEFAULT_ASSUMPTIONS.peakHourRidershipShare
+    );
+    expect(mergedScenario.assumptions.crowdingThreshold).toBe(DEFAULT_ASSUMPTIONS.crowdingThreshold);
+    expect(mergedScenario.assumptions.crowdingTimePenaltyFactor).toBe(
+      DEFAULT_ASSUMPTIONS.crowdingTimePenaltyFactor
+    );
+    expect(mergedScenario.assumptions.transitSpecificConstantMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.transitSpecificConstantMinutes
+    );
+    expect(mergedScenario.assumptions.carEmploymentNormalizationJobs).toBe(
+      DEFAULT_ASSUMPTIONS.carEmploymentNormalizationJobs
+    );
+    expect(mergedScenario.assumptions.accessibilityMidpointMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.accessibilityMidpointMinutes
+    );
+    expect(mergedScenario.assumptions.developmentAccessibilityWeight).toBe(
+      DEFAULT_ASSUMPTIONS.developmentAccessibilityWeight
+    );
+    expect(mergedScenario.assumptions.averageHouseholdSize).toBe(
+      DEFAULT_ASSUMPTIONS.averageHouseholdSize
+    );
+    expect(mergedScenario.assumptions.specialGeneratorDemandBonus).toBe(
+      DEFAULT_ASSUMPTIONS.specialGeneratorDemandBonus
+    );
+    expect(mergedScenario.assumptions.uwfCoordinate).toEqual(DEFAULT_ASSUMPTIONS.uwfCoordinate);
+    expect(mergedScenario.assumptions.capitalAssetLifeYears).toBe(
+      DEFAULT_ASSUMPTIONS.capitalAssetLifeYears
+    );
+    expect(mergedScenario.assumptions.capitalDiscountRate).toBe(
+      DEFAULT_ASSUMPTIONS.capitalDiscountRate
+    );
+    expect(mergedScenario.assumptions.pathChoiceBeta).toBe(DEFAULT_ASSUMPTIONS.pathChoiceBeta);
+    expect(mergedScenario.assumptions.pathChoiceMaximumExtraMinutes).toBe(
+      DEFAULT_ASSUMPTIONS.pathChoiceMaximumExtraMinutes
+    );
+  });
+
   it('shows an explicit notice when there is no usable service', () => {
     const blankScenario: Scenario = {
       id: 'blank',
@@ -84,7 +173,7 @@ describe('scenario store simulation action', () => {
     expect(updatedLine).toBeDefined();
     expect(updatedLine?.geometry).toHaveLength(originalPointCount - 1);
     expect(updatedLine?.stations).toHaveLength(originalStationCount - 1);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(scenario.lines.length);
   });
 
   it('restores the bundled demo scenario after its route is deleted', () => {
@@ -96,7 +185,7 @@ describe('scenario store simulation action', () => {
 
     const activeScenario = selectActiveScenario(useScenarioStore.getState());
     expect(activeScenario.id).toBe(DEMO_SCENARIO.id);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(DEMO_SCENARIO.lines.length);
     expect(activeScenario.lines[0].stations.length).toBeGreaterThan(1);
     expect(useScenarioStore.getState().selectedLineId).toBe(activeScenario.lines[0].id);
   });
@@ -136,7 +225,7 @@ describe('scenario store simulation action', () => {
     const line = activeScenario.lines.find((candidate) => candidate.id === lineId);
     expect(line).toBeDefined();
     expect(line?.geometry[1]).toEqual([-87.2, 30.45]);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(scenario.lines.length);
     expect(useScenarioStore.getState().selectedLineId).toBe(lineId);
   });
 

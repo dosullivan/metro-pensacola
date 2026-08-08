@@ -10,7 +10,33 @@ export interface OdDemand {
   dailyTrips: number;
 }
 
-export function createDemandMatrix(zones: SimulationZone[], assumptions: SimulationAssumptions): OdDemand[] {
+function regionalTotals(zones: SimulationZone[]): { population: number; jobs: number } {
+  return zones.reduce(
+    (totals, zone) => ({
+      population: totals.population + zone.population,
+      jobs: totals.jobs + zone.jobs
+    }),
+    { population: 0, jobs: 0 }
+  );
+}
+
+export function calculateDailyRegionalTrips(
+  baseZones: SimulationZone[],
+  zones: SimulationZone[],
+  assumptions: SimulationAssumptions
+): number {
+  const base = regionalTotals(baseZones);
+  const current = regionalTotals(zones);
+  const populationFactor = base.population > 0 ? current.population / base.population : 1;
+  const jobsFactor = base.jobs > 0 ? current.jobs / base.jobs : 1;
+  return assumptions.totalDailyRegionalTrips * (populationFactor + jobsFactor) / 2;
+}
+
+export function createDemandMatrix(
+  zones: SimulationZone[],
+  assumptions: SimulationAssumptions,
+  baseZones: SimulationZone[] = zones
+): OdDemand[] {
   const rawPairs: Array<Omit<OdDemand, 'dailyTrips'> & { weight: number }> = [];
   let totalWeight = 0;
 
@@ -22,8 +48,17 @@ export function createDemandMatrix(zones: SimulationZone[], assumptions: Simulat
 
       const crowDistance = distanceMiles(origin.centroid, destination.centroid);
       const effectiveDistance = Math.max(crowDistance, assumptions.minimumGravityDistanceMiles);
-      const weight =
+      const specialGenerator =
+        distanceMiles(destination.centroid, assumptions.airportCoordinate) <=
+          assumptions.specialGeneratorRadiusMiles ||
+        distanceMiles(destination.centroid, assumptions.uwfCoordinate) <=
+          assumptions.specialGeneratorRadiusMiles;
+      const specialGeneratorMultiplier = specialGenerator
+        ? 1 + assumptions.specialGeneratorDemandBonus
+        : 1;
+      const baseWeight =
         (origin.population * destination.jobs) / effectiveDistance ** assumptions.gravityDistanceExponent;
+      const weight = baseWeight * specialGeneratorMultiplier;
 
       rawPairs.push({
         originZoneId: origin.id,
@@ -41,8 +76,9 @@ export function createDemandMatrix(zones: SimulationZone[], assumptions: Simulat
     return [];
   }
 
+  const dailyRegionalTrips = calculateDailyRegionalTrips(baseZones, zones, assumptions);
   return rawPairs.map(({ weight, ...pair }) => ({
     ...pair,
-    dailyTrips: (weight / totalWeight) * assumptions.totalDailyRegionalTrips
+    dailyTrips: (weight / totalWeight) * dailyRegionalTrips
   }));
 }

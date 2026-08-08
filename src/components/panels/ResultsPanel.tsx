@@ -1,10 +1,24 @@
 import { Activity, Building2, CircleDollarSign, Timer, TrainFront } from 'lucide-react';
+import { calculateAnnualizedCapitalCost } from '../../simulation/costs';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import { formatCurrency, formatMiles, formatNumber } from '../../utils/format';
 
 export function ResultsPanel() {
   const scenario = useScenarioStore(selectActiveScenario);
   const results = scenario.results;
+  const annualizedCapitalCost = results
+    ? results.annualizedCapitalCost ?? calculateAnnualizedCapitalCost(
+      results.constructionCost,
+      scenario.assumptions
+    )
+    : 0;
+  const annualizedCostPerRider = results
+    ? results.annualizedCostPerRider ?? (
+      results.annualRidership > 0
+        ? (annualizedCapitalCost + results.annualOperatingCost) / results.annualRidership
+        : 0
+    )
+    : 0;
 
   return (
     <section className="panel results-panel">
@@ -35,16 +49,26 @@ export function ResultsPanel() {
 
           <div className="metric-list">
             <div>
+              <span>Regional Trip Demand</span>
+              <strong>
+                {formatNumber(results.modeledDailyRegionalTrips ?? scenario.assumptions.totalDailyRegionalTrips)}
+              </strong>
+            </div>
+            <div>
               <span>Annual Operating Cost</span>
               <strong>{formatCurrency(results.annualOperatingCost)}</strong>
+            </div>
+            <div>
+              <span>Annualized Capital Cost</span>
+              <strong>{formatCurrency(annualizedCapitalCost)}</strong>
             </div>
             <div>
               <span>Annual Ridership</span>
               <strong>{formatNumber(results.annualRidership)}</strong>
             </div>
             <div>
-              <span>Cost per Daily Rider</span>
-              <strong>{formatCurrency(results.costPerDailyRider)}</strong>
+              <span>Annualized Cost per Rider</span>
+              <strong>{formatCurrency(annualizedCostPerRider)}</strong>
             </div>
             <div>
               <span>Fare Revenue</span>

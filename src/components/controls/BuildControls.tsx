@@ -47,6 +47,7 @@ export function BuildControls() {
   const renameLine = useScenarioStore((state) => state.renameLine);
   const renameStation = useScenarioStore((state) => state.renameStation);
   const runActiveSimulation = useScenarioStore((state) => state.runActiveSimulation);
+  const isSimulating = useScenarioStore((state) => state.isSimulating);
   const saveScenario = useScenarioStore((state) => state.saveScenario);
   const setInspectedFeature = useScenarioStore((state) => state.setInspectedFeature);
 
@@ -181,9 +182,9 @@ export function BuildControls() {
           <Save size={16} />
           Save
         </button>
-        <button className="command run" onClick={() => runActiveSimulation()}>
+        <button className="command run" onClick={() => runActiveSimulation()} disabled={isSimulating}>
           <Play size={16} />
-          Run Simulation
+          {isSimulating ? 'Simulating…' : 'Run Simulation'}
         </button>
       </div>
       {simulationNotice ? <div className="run-feedback">{simulationNotice}</div> : null}

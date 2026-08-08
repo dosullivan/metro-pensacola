@@ -36,7 +36,7 @@ npm run build
 - Toggle population, employment, density, accessibility, ridership, development, land value, and station catchment overlays.
 - Automatically persist scenarios in browser storage, with controls to switch, duplicate, delete, restore, and compare them.
 - Show advisory capital and operating budgets; enabling Budget Limits highlights overruns but does not block construction.
-- Start from a clearly labeled conceptual demo corridor from downtown Pensacola to UWF via Baptist Health, Cordova Mall, PNS airport, and Ferry Pass.
+- Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 
 ## Architecture
 
@@ -115,5 +115,5 @@ This is not a microscopic traffic simulator. It uses aggregate zone-to-zone dema
 
 - `src/data/pensacola/zones.ts` is imported synchronously and is roughly 10 MB before bundling, so production startup and bundle size need future optimization through lazy loading or code splitting.
 - The roughly 34 MB OSM corridor GeoJSON is loaded only after Road Snap is enabled. Its road graph is then built in the browser, which can produce a noticeable one-time delay.
-- Simulation work grows with the number of zone pairs and transit graph size. The current 296-zone dataset creates about 87,000 ordered origin-destination pairs per model pass, so larger networks will eventually need routing and demand-performance work.
+- Simulation work still scores about 87,000 ordered origin-destination pairs per model pass, but transit paths are computed once per origin zone and reused across destinations. Larger networks may eventually need a web worker or further demand-performance work.
 - Scenarios are local to a browser profile. There is no account sync, backend storage, or import/export workflow yet.

@@ -4,6 +4,7 @@ import { DEFAULT_ASSUMPTIONS } from '../data/assumptions';
 import { DEMO_SCENARIO } from '../data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../data/pensacola/zones';
 import { runSimulation } from '../simulation/runSimulation';
+import { runSimulationAsync, supportsSimulationWorker } from '../simulation/simulationClient';
 import { distanceMiles, makeId } from '../simulation/geo';
 import { snapCoordinateToLineGeometry } from '../simulation/snapping';
 import type {
@@ -16,6 +17,7 @@ import type {
   TransitLine,
   TransitTechnologyId,
   FrequencyMinutes,
+  SimulationResults,
   SimulationZone
 } from '../types';
 
@@ -44,6 +46,7 @@ interface ScenarioState {
   compareScenarioIds: string[];
   lastSavedAt?: string;
   simulationNotice?: string;
+  isSimulating: boolean;
   setMode: (mode: AppMode) => void;
   setBuildTool: (buildTool: BuildTool) => void;
   setRoadSnapEnabled: (enabled: boolean) => void;
@@ -128,6 +131,24 @@ function getScenarioStorage(): StateStorage {
 
 function cloneScenario(scenario: Scenario): Scenario {
   return JSON.parse(JSON.stringify(scenario)) as Scenario;
+}
+
+function assumptionsWithDefaults(
+  assumptions: Partial<Scenario['assumptions']>
+): Scenario['assumptions'] {
+  return {
+    ...cloneScenario(DEMO_SCENARIO).assumptions,
+    ...assumptions,
+    technologies: Object.fromEntries(
+      Object.entries(DEFAULT_ASSUMPTIONS.technologies).map(([technologyId, technology]) => [
+        technologyId,
+        {
+          ...technology,
+          ...assumptions.technologies?.[technologyId as keyof typeof assumptions.technologies]
+        }
+      ])
+    ) as Scenario['assumptions']['technologies']
+  };
 }
 
 function blankScenario(index: number): Scenario {
@@ -378,6 +399,7 @@ export const useScenarioStore = create<ScenarioState>()(
       inspectedFeature: undefined,
       compareScenarioIds: [DEMO_SCENARIO.id],
       simulationNotice: undefined,
+      isSimulating: false,
       setMode: (mode) => set({ mode, inspectedFeature: undefined }),
       setBuildTool: (buildTool) => set({ buildTool }),
       setRoadSnapEnabled: (enabled) => set({ roadSnapEnabled: enabled }),
@@ -469,7 +491,7 @@ export const useScenarioStore = create<ScenarioState>()(
             compareScenarioIds: state.compareScenarioIds.includes(demo.id)
               ? state.compareScenarioIds
               : [...state.compareScenarioIds, demo.id],
-            simulationNotice: 'Demo corridor restored.'
+            simulationNotice: 'Demo network restored.'
           };
         }),
       renameScenario: (scenarioId, name) =>
@@ -918,27 +940,64 @@ export const useScenarioStore = create<ScenarioState>()(
           });
           return didRepair ? update : {};
         }),
-      runActiveSimulation: () =>
-        set((state) => {
-          const activeScenario = scenarioWithGeometryOnlyLinesRepaired(getActiveScenario(state)).scenario;
-          const now = new Date().toISOString();
-          const results = {
-            ...runSimulation(activeScenario, PENSACOLA_ZONES),
-            generatedAt: now
-          };
+      runActiveSimulation: () => {
+        if (get().isSimulating) {
+          return;
+        }
+        const activeScenario = scenarioWithGeometryOnlyLinesRepaired(getActiveScenario(get())).scenario;
+        const simulationInputsFingerprint = (scenario: Scenario) =>
+          JSON.stringify({
+            lines: scenario.lines,
+            assumptions: scenario.assumptions,
+            simulationYear: scenario.simulationYear
+          });
+        const simulatedFingerprint = simulationInputsFingerprint(activeScenario);
+        set((state) => ({
+          scenarios: state.scenarios.map((scenario) =>
+            scenario.id === activeScenario.id ? activeScenario : scenario
+          )
+        }));
+
+        const finish = (rawResults: SimulationResults) => {
+          const results = { ...rawResults, generatedAt: new Date().toISOString() };
           const hasUsableService = activeScenario.lines.some((line) => line.stations.length >= 2);
           const simulationNotice = hasUsableService
             ? `Simulation complete: ${Math.round(results.dailyRidership).toLocaleString()} weekday riders.`
             : 'Simulation complete, but no usable service exists yet. Place at least two stations on one line.';
 
-          return {
-            scenarios: state.scenarios.map((scenario) =>
-              scenario.id === activeScenario.id ? { ...activeScenario, results } : scenario
-            ),
-            activeScenarioId: activeScenario.id,
-            simulationNotice
-          };
-        }),
+          set((state) => {
+            const currentScenario = state.scenarios.find((scenario) => scenario.id === activeScenario.id);
+            if (!currentScenario) {
+              return { isSimulating: false };
+            }
+            if (simulationInputsFingerprint(currentScenario) !== simulatedFingerprint) {
+              return {
+                isSimulating: false,
+                simulationNotice: 'The scenario changed during the run. Run the simulation again.'
+              };
+            }
+            return {
+              scenarios: state.scenarios.map((scenario) =>
+                scenario.id === currentScenario.id ? { ...currentScenario, results } : scenario
+              ),
+              isSimulating: false,
+              simulationNotice
+            };
+          });
+        };
+
+        if (!supportsSimulationWorker()) {
+          finish(runSimulation(activeScenario, PENSACOLA_ZONES));
+          return;
+        }
+
+        set({ isSimulating: true, simulationNotice: 'Simulation running…' });
+        void runSimulationAsync(activeScenario, PENSACOLA_ZONES)
+          .then(finish)
+          .catch(() => {
+            finish(runSimulation(activeScenario, PENSACOLA_ZONES));
+          });
+      },
       toggleScenarioComparison: (scenarioId) =>
         set((state) => ({
           compareScenarioIds: state.compareScenarioIds.includes(scenarioId)
@@ -949,7 +1008,20 @@ export const useScenarioStore = create<ScenarioState>()(
     {
       name: 'metro-pensacola-scenarios',
       version: 1,
-      storage: createJSONStorage(getScenarioStorage)
+      storage: createJSONStorage(getScenarioStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<ScenarioState>;
+        return {
+          ...currentState,
+          ...persisted,
+          isSimulating: false,
+          scenarios:
+            persisted.scenarios?.map((scenario) => ({
+              ...scenario,
+              assumptions: assumptionsWithDefaults(scenario.assumptions)
+            })) ?? currentState.scenarios
+        };
+      }
     }
   )
 );

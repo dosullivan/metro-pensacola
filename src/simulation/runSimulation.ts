@@ -8,6 +8,7 @@ import type {
   ZoneResults
 } from '../types';
 import {
+  calculateAnnualizedCapitalCost,
   calculateAnnualOperatingCost,
   calculateConstructionCost,
   calculateLineMileage,
@@ -18,6 +19,8 @@ import { calculateStationCatchment, calculateSystemCatchment, stationDevelopment
 import { estimateNetworkRidership } from './ridership';
 import { calculateAccessibilityScores } from './accessibility';
 import { applyDevelopmentGrowth, projectDevelopment } from './development';
+import { calculateDailyRegionalTrips } from './demand';
+import { distanceMiles } from './geo';
 
 function lineResults(
   scenario: Scenario,
@@ -55,7 +58,9 @@ function stationResults(
       const catchment = calculateStationCatchment(station, zones, scenario.assumptions);
       const catchmentDevelopment = catchment.zoneIdsOneMile.reduce((sum, zoneId) => {
         const zoneResult = developmentByZone.get(zoneId);
-        return sum + (zoneResult?.developmentPressure ?? 0);
+        return sum +
+          (zoneResult?.developmentPressure ?? 0) *
+          (catchment.zoneWeightsOneMile[zoneId] ?? 0);
       }, 0);
 
       return {
@@ -69,10 +74,26 @@ function stationResults(
         nearbyJobs: catchment.jobsHalfMile,
         catchment,
         developmentPotential:
-          stationDevelopmentPotential(station, zones, scenario.assumptions) + catchmentDevelopment / 10
+          stationDevelopmentPotential(station, zones, scenario.assumptions, catchment) +
+          catchmentDevelopment / 10
       };
     })
   );
+}
+
+export function nearestStationIdWithinRadius(
+  scenario: Scenario,
+  coordinate: [number, number],
+  radiusMiles: number
+): string | undefined {
+  return scenario.lines
+    .flatMap((line) => line.stations)
+    .map((station) => ({
+      stationId: station.id,
+      distance: distanceMiles(station.coordinate, coordinate)
+    }))
+    .filter(({ distance }) => distance <= radiusMiles)
+    .sort((a, b) => a.distance - b.distance)[0]?.stationId;
 }
 
 function buildMessages(results: {
@@ -81,6 +102,7 @@ function buildMessages(results: {
   zoneResults: ZoneResults[];
   constructionCost: number;
   dailyRidership: number;
+  airportStationId?: string;
 }): SimulationMessage[] {
   if (!results.lineResults.some((line) => line.stationCount >= 2)) {
     return [
@@ -97,12 +119,20 @@ function buildMessages(results: {
     (a, b) => b.entries + b.exits + b.transfers - (a.entries + a.exits + a.transfers)
   )[0];
   const topLine = [...results.lineResults].sort((a, b) => b.weekdayRidership - a.weekdayRidership)[0];
-  const airportStation = results.stationResults.find((station) => /airport/i.test(station.stationName));
+  const airportStation = results.stationResults.find(
+    (station) => station.stationId === results.airportStationId
+  );
 
   if (topStation && topStation.entries + topStation.exits > 2200) {
     const nearbyGrowth = results.zoneResults
       .filter((zone) => topStation.catchment.zoneIdsOneMile.includes(zone.zoneId))
-      .reduce((sum, zone) => sum + zone.housingGrowth, 0);
+      .reduce(
+        (sum, zone) =>
+          sum +
+          zone.housingGrowth *
+            (topStation.catchment.zoneWeightsOneMile[zone.zoneId] ?? 0),
+        0
+      );
     messages.push({
       id: 'station-booming',
       title: `${topStation.stationName.toUpperCase()} IS BOOMING`,
@@ -147,20 +177,30 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     scenario.assumptions,
     scenario.simulationYear
   );
-  const zones =
-    scenario.simulationYear > 0 ? applyDevelopmentGrowth(baseZones, firstPassDevelopment) : baseZones;
+  let zones = baseZones;
+  let ridership = firstPassRidership;
+  let accessibility = firstPassAccessibility;
+  let zoneResults = firstPassDevelopment;
 
-  const ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions);
-  const accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
-  const zoneResults = projectDevelopment(
-    baseZones,
-    accessibility,
-    ridership.zoneTransitTrips,
-    scenario.assumptions,
-    scenario.simulationYear
-  );
+  if (scenario.simulationYear > 0) {
+    zones = applyDevelopmentGrowth(baseZones, firstPassDevelopment, scenario.assumptions);
+    ridership = estimateNetworkRidership(scenario.lines, zones, scenario.assumptions, { baseZones });
+    accessibility = calculateAccessibilityScores(scenario.lines, zones, scenario.assumptions);
+    zoneResults = projectDevelopment(
+      baseZones,
+      accessibility,
+      ridership.zoneTransitTrips,
+      scenario.assumptions,
+      scenario.simulationYear
+    );
+  }
   const constructionCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
+  const annualizedCapitalCost = calculateAnnualizedCapitalCost(
+    constructionCost,
+    scenario.assumptions
+  );
   const annualOperatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
+  const modeledDailyRegionalTrips = calculateDailyRegionalTrips(baseZones, zones, scenario.assumptions);
   const dailyRidership = ridership.dailyRidership;
   const annualRidership = dailyRidership * scenario.assumptions.annualizationFactor;
   const fareRevenue = annualRidership * scenario.assumptions.defaultFare;
@@ -176,13 +216,23 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
     ridership.stationExits,
     ridership.stationTransfers
   );
+  const airportStationId = nearestStationIdWithinRadius(
+    scenario,
+    scenario.assumptions.airportCoordinate,
+    scenario.assumptions.specialGeneratorRadiusMiles
+  );
 
   return {
+    baseDailyRegionalTrips: scenario.assumptions.totalDailyRegionalTrips,
+    modeledDailyRegionalTrips,
     constructionCost,
+    annualizedCapitalCost,
     annualOperatingCost,
     dailyRidership,
     annualRidership,
     costPerDailyRider: dailyRidership > 0 ? constructionCost / dailyRidership : 0,
+    annualizedCostPerRider:
+      annualRidership > 0 ? (annualizedCapitalCost + annualOperatingCost) / annualRidership : 0,
     fareRevenue,
     operatingSubsidy: Math.max(0, annualOperatingCost - fareRevenue),
     averageRiderTravelTimeSavings,
@@ -201,7 +251,8 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
       stationResults: stations,
       zoneResults,
       constructionCost,
-      dailyRidership
+      dailyRidership,
+      airportStationId
     }),
     generatedAt: 'deterministic-simulation'
   };

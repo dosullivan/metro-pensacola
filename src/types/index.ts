@@ -24,6 +24,8 @@ export interface TransitTechnology {
   capitalCostPerMile: number;
   stationCost: number;
   averageSpeedMph: number;
+  dwellMinutesPerStop: number;
+  vehicleCapacity: number;
   baseOperatingCostPer15Miles: number;
   color: string;
 }
@@ -85,6 +87,8 @@ export interface CatchmentStats {
   jobsOneMile: number;
   zoneIdsHalfMile: string[];
   zoneIdsOneMile: string[];
+  zoneWeightsHalfMile: Record<string, number>;
+  zoneWeightsOneMile: Record<string, number>;
 }
 
 export interface SimulationAssumptions {
@@ -95,8 +99,12 @@ export interface SimulationAssumptions {
   transferPenaltyMinutes: number;
   walkSpeedMph: number;
   defaultFare: number;
+  valueOfTimeDollarsPerHour: number;
+  carCostPerMile: number;
   capitalBudget: number;
   annualOperatingBudget: number;
+  capitalAssetLifeYears: number;
+  capitalDiscountRate: number;
   totalDailyRegionalTrips: number;
   gravityDistanceExponent: number;
   minimumGravityDistanceMiles: number;
@@ -104,16 +112,35 @@ export interface SimulationAssumptions {
   roadCircuityFactor: number;
   congestionPenaltyMinutes: number;
   parkingPenaltyMinutes: number;
+  carEmploymentNormalizationJobs: number;
+  carDensityNormalization: number;
   modeChoiceBeta: number;
   maxTransitModeShare: number;
+  transitSpecificConstantMinutes: number;
+  pathChoiceBeta: number;
+  pathChoiceMaximumExtraMinutes: number;
+  accessibilityMidpointMinutes: number;
+  accessibilityDecayBeta: number;
   annualizationFactor: number;
   vehicleTripsRemovedPerTransitTrip: number;
   co2KgPerVehicleTrip: number;
   baseHeadwayMinutes: FrequencyMinutes;
+  peakHourRidershipShare: number;
+  crowdingThreshold: number;
+  crowdingTimePenaltyFactor: number;
   developmentGrowthRatePerFiveYears: number;
+  developmentAccessibilityWeight: number;
+  developmentTransitSuccessWeight: number;
+  developmentDowntownWeight: number;
+  developmentJobsGrowthFactor: number;
+  commercialSqFtPerJob: number;
+  averageHouseholdSize: number;
   roadSnapDistanceFeet: number;
+  specialGeneratorRadiusMiles: number;
+  specialGeneratorDemandBonus: number;
   downtownCoordinate: Coordinate;
   airportCoordinate: Coordinate;
+  uwfCoordinate: Coordinate;
 }
 
 export interface Scenario {
@@ -160,6 +187,7 @@ export interface ZoneResults {
   jobsGrowth: number;
   housingGrowth: number;
   landValueGrowth: number;
+  developmentCapacityUsed: number;
 }
 
 export interface SimulationMessage {
@@ -169,11 +197,15 @@ export interface SimulationMessage {
 }
 
 export interface SimulationResults {
+  baseDailyRegionalTrips: number;
+  modeledDailyRegionalTrips: number;
   constructionCost: number;
+  annualizedCapitalCost: number;
   annualOperatingCost: number;
   dailyRidership: number;
   annualRidership: number;
   costPerDailyRider: number;
+  annualizedCostPerRider: number;
   fareRevenue: number;
   operatingSubsidy: number;
   averageRiderTravelTimeSavings: number;

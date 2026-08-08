@@ -2,13 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../src/data/pensacola/zones';
-import { calculateStationCatchment } from '../src/simulation/catchment';
-import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
-import { projectDevelopment } from '../src/simulation/development';
-import { lineMileage } from '../src/simulation/geo';
-import { estimateNetworkRidership } from '../src/simulation/ridership';
-import { fastestTransitPath } from '../src/simulation/routing';
-import { runSimulation } from '../src/simulation/runSimulation';
+import { accessibilityWeight, calculateAccessibilityScores } from '../src/simulation/accessibility';
+import { calculateStationCatchment, calculateSystemCatchment } from '../src/simulation/catchment';
+import {
+  averageWaitTime,
+  calculateAnnualizedCapitalCost,
+  calculateConstructionCost,
+  calculateLineMileage,
+  capitalRecoveryFactor
+} from '../src/simulation/costs';
+import { calculateDailyRegionalTrips, createDemandMatrix } from '../src/simulation/demand';
+import { applyDevelopmentGrowth, projectDevelopment } from '../src/simulation/development';
+import { distanceMiles, lineMileage } from '../src/simulation/geo';
+import {
+  directedSegmentKey,
+  estimateCarGeneralizedTime,
+  estimateNetworkRidership,
+  estimateTransitGeneralizedTime,
+  maximumTransitShareForOrigin,
+  spreadTransitPaths,
+  transitModeShare
+} from '../src/simulation/ridership';
+import { buildTransitGraph, fastestTransitPath, transitTimesFromOrigin } from '../src/simulation/routing';
+import { nearestStationIdWithinRadius, runSimulation } from '../src/simulation/runSimulation';
 import {
   buildRoadNetwork,
   roadPathBetweenCoordinates,
@@ -110,6 +126,24 @@ function testLine(overrides: Partial<TransitLine> = {}): TransitLine {
   };
 }
 
+function lineWithStationCount(stationCount: number, lineId = `line-${stationCount}`): TransitLine {
+  const coordinates = Array.from(
+    { length: stationCount },
+    (_, index) => [-87.24 + index * 0.03, 30.42] as [number, number]
+  );
+  return testLine({
+    id: lineId,
+    geometry: coordinates,
+    stations: coordinates.map((coordinate, order) => ({
+      id: `${lineId}-station-${order}`,
+      lineId,
+      name: `Station ${order + 1}`,
+      coordinate,
+      order
+    }))
+  });
+}
+
 describe('simulation primitives', () => {
   it('calculates line mileage from geographic coordinates', () => {
     expect(lineMileage([[0, 0], [0, 1]])).toBeCloseTo(69.1, 0);
@@ -122,6 +156,21 @@ describe('simulation primitives', () => {
       calculateLineMileage(line) * assumptions.technologies.brt.capitalCostPerMile +
       line.stations.length * assumptions.technologies.brt.stationCost;
     expect(calculateConstructionCost(line, assumptions)).toBeCloseTo(expected, 2);
+  });
+
+  it('annualizes capital cost with the configured asset life and discount rate', () => {
+    const assumptions = cloneAssumptions();
+    const constructionCost = 1_000_000_000;
+    const expectedFactor =
+      assumptions.capitalDiscountRate *
+      (1 + assumptions.capitalDiscountRate) ** assumptions.capitalAssetLifeYears /
+      ((1 + assumptions.capitalDiscountRate) ** assumptions.capitalAssetLifeYears - 1);
+
+    expect(capitalRecoveryFactor(30, 0)).toBeCloseTo(1 / 30, 10);
+    expect(calculateAnnualizedCapitalCost(constructionCost, assumptions)).toBeCloseTo(
+      constructionCost * expectedFactor,
+      6
+    );
   });
 
   it('calculates station catchments for half-mile and one-mile bands', () => {
@@ -143,9 +192,100 @@ describe('simulation primitives', () => {
     expect(catchment.jobsOneMile).toBe(testZones[0].jobs + testZones[1].jobs);
   });
 
+  it('weights polygon zones by the share of their area inside each catchment', () => {
+    const assumptions = cloneAssumptions();
+    const station = {
+      id: 'area-station',
+      lineId: 'area-line',
+      name: 'Area Station',
+      coordinate: [0, 0] as [number, number],
+      order: 0
+    };
+    const zone: SimulationZone = {
+      ...testZones[0],
+      id: 'area-zone',
+      centroid: [0.01, 0],
+      polygon: [
+        [0, -0.005],
+        [0.02, -0.005],
+        [0.02, 0.005],
+        [0, 0.005],
+        [0, -0.005]
+      ],
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [0, -0.005],
+          [0.02, -0.005],
+          [0.02, 0.005],
+          [0, 0.005],
+          [0, -0.005]
+        ]]
+      },
+      population: 1_000,
+      jobs: 500
+    };
+    const catchment = calculateStationCatchment(station, [zone], assumptions);
+    const line = testLine({ id: 'area-line', stations: [station] });
+    const system = calculateSystemCatchment([line], [zone], assumptions);
+
+    expect(catchment.populationHalfMile).toBeGreaterThan(0);
+    expect(catchment.populationHalfMile).toBeLessThan(zone.population);
+    expect(catchment.populationOneMile).toBeGreaterThan(catchment.populationHalfMile);
+    expect(catchment.populationOneMile).toBeLessThan(zone.population);
+    expect(catchment.jobsHalfMile).toBeCloseTo(
+      zone.jobs * catchment.zoneWeightsHalfMile[zone.id],
+      8
+    );
+    expect(system.population).toBeCloseTo(catchment.populationHalfMile, 8);
+    expect(system.jobs).toBeCloseTo(catchment.jobsHalfMile, 8);
+  });
+
   it('uses half the headway as average wait time', () => {
     expect(averageWaitTime(10)).toBe(5);
     expect(averageWaitTime(30)).toBe(15);
+  });
+
+  it('scales regional trip demand with population and job growth', () => {
+    const assumptions = cloneAssumptions();
+    const grownZones = testZones.map((zone) => ({
+      ...zone,
+      population: zone.population * 1.1,
+      jobs: zone.jobs * 1.1
+    }));
+    const baseDemand = createDemandMatrix(testZones, assumptions);
+    const futureDemand = createDemandMatrix(grownZones, assumptions, testZones);
+
+    expect(baseDemand.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips,
+      8
+    );
+    expect(calculateDailyRegionalTrips(testZones, grownZones, assumptions)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips * 1.1,
+      8
+    );
+    expect(futureDemand.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      assumptions.totalDailyRegionalTrips * 1.1,
+      8
+    );
+  });
+
+  it('redistributes demand toward airport and university generators without changing trip totals', () => {
+    const baselineAssumptions = cloneAssumptions();
+    baselineAssumptions.specialGeneratorDemandBonus = 0;
+    const bonusAssumptions = cloneAssumptions();
+    bonusAssumptions.specialGeneratorDemandBonus = 0.5;
+    const baseline = createDemandMatrix(testZones, baselineAssumptions);
+    const withBonus = createDemandMatrix(testZones, bonusAssumptions);
+    const tripsToAirport = (pairs: typeof baseline) => pairs
+      .filter((pair) => pair.destinationZoneId === 'jobs')
+      .reduce((sum, pair) => sum + pair.dailyTrips, 0);
+
+    expect(tripsToAirport(withBonus)).toBeGreaterThan(tripsToAirport(baseline));
+    expect(withBonus.reduce((sum, pair) => sum + pair.dailyTrips, 0)).toBeCloseTo(
+      bonusAssumptions.totalDailyRegionalTrips,
+      8
+    );
   });
 
   it('snaps route clicks to nearby OSM road corridors', () => {
@@ -256,6 +396,49 @@ describe('simulation primitives', () => {
 });
 
 describe('routing and ridership', () => {
+  it('uses a smooth accessibility decay around the target travel time', () => {
+    const assumptions = cloneAssumptions();
+
+    expect(accessibilityWeight(20, assumptions)).toBeGreaterThan(
+      accessibilityWeight(30, assumptions)
+    );
+    expect(accessibilityWeight(30, assumptions)).toBeCloseTo(0.5, 8);
+    expect(accessibilityWeight(40, assumptions)).toBeLessThan(
+      accessibilityWeight(30, assumptions)
+    );
+    expect(accessibilityWeight(30.01, assumptions)).toBeGreaterThan(0);
+  });
+
+  it('converts fares and car operating costs into generalized minutes', () => {
+    const assumptions = cloneAssumptions();
+    const transitMinutes = estimateTransitGeneralizedTime(20, assumptions);
+    const carMinutes = estimateCarGeneralizedTime(testZones[0], testZones[1], assumptions);
+
+    expect(transitMinutes).toBe(27.5);
+    expect(carMinutes).toBeGreaterThan(0);
+  });
+
+  it('keeps equal-generalized-cost transit share in the calibration band', () => {
+    const assumptions = cloneAssumptions();
+    const share = transitModeShare(30, 30, assumptions);
+
+    expect(share).toBeGreaterThan(0.1);
+    expect(share).toBeLessThan(0.15);
+  });
+
+  it('raises the transit ceiling for origins with fewer vehicle-owning households', () => {
+    const assumptions = cloneAssumptions();
+    const vehicleRichOrigin = { ...testZones[0], carOwnership: 0.98 };
+    const lowVehicleOrigin = { ...testZones[0], carOwnership: 0.5 };
+    const vehicleRichMaximum = maximumTransitShareForOrigin(vehicleRichOrigin, assumptions);
+    const lowVehicleMaximum = maximumTransitShareForOrigin(lowVehicleOrigin, assumptions);
+
+    expect(lowVehicleMaximum).toBeGreaterThan(vehicleRichMaximum);
+    expect(transitModeShare(30, 30, assumptions, lowVehicleMaximum)).toBeGreaterThan(
+      transitModeShare(30, 30, assumptions, vehicleRichMaximum)
+    );
+  });
+
   it('finds a transit path between connected stations', () => {
     const assumptions = cloneAssumptions();
     const line = testLine();
@@ -263,6 +446,89 @@ describe('routing and ridership', () => {
     expect(path).toBeDefined();
     expect(path?.lineIds).toContain(line.id);
     expect(path?.totalMinutes).toBeGreaterThan(0);
+    expect(path?.segments).toEqual([
+      {
+        lineId: line.id,
+        fromStationId: line.stations[0].id,
+        toStationId: line.stations[1].id
+      }
+    ]);
+  });
+
+  it('adds dwell time when a through trip gains an intermediate station', () => {
+    const assumptions = cloneAssumptions();
+    const lineWithStop = lineWithStationCount(3, 'with-stop');
+    const origin = lineWithStop.stations[0].coordinate;
+    const destination = lineWithStop.stations[2].coordinate;
+    const directLine = testLine({
+      id: 'direct',
+      geometry: [origin, destination],
+      stations: [
+        { id: 'direct-origin', lineId: 'direct', name: 'Origin', coordinate: origin, order: 0 },
+        { id: 'direct-destination', lineId: 'direct', name: 'Destination', coordinate: destination, order: 1 }
+      ]
+    });
+    const directPath = fastestTransitPath(origin, destination, [directLine], assumptions);
+    const stoppingPath = fastestTransitPath(origin, destination, [lineWithStop], assumptions);
+
+    expect(stoppingPath?.totalMinutes).toBeCloseTo(
+      (directPath?.totalMinutes ?? 0) + assumptions.technologies.brt.dwellMinutesPerStop,
+      6
+    );
+  });
+
+  it('charges dwell at every non-terminal stop on an end-to-end trip', () => {
+    const assumptions = cloneAssumptions();
+    const noDwellAssumptions = cloneAssumptions();
+    noDwellAssumptions.technologies.brt.dwellMinutesPerStop = 0;
+    const line = lineWithStationCount(4);
+    const origin = line.stations[0].coordinate;
+    const destination = line.stations[3].coordinate;
+    const path = fastestTransitPath(origin, destination, [line], assumptions);
+    const noDwellPath = fastestTransitPath(origin, destination, [line], noDwellAssumptions);
+
+    expect(path?.totalMinutes).toBeCloseTo(
+      (noDwellPath?.totalMinutes ?? 0) + assumptions.technologies.brt.dwellMinutesPerStop * 2,
+      8
+    );
+  });
+
+  it('reproduces distance-speed routing when dwell time is zero', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.dwellMinutesPerStop = 0;
+    const line = lineWithStationCount(3);
+    const path = fastestTransitPath(
+      line.stations[0].coordinate,
+      line.stations[2].coordinate,
+      [line],
+      assumptions
+    );
+    const expectedInVehicleMinutes =
+      line.stations.slice(0, -1).reduce((sum, station, index) => (
+        sum +
+        distanceMiles(station.coordinate, line.stations[index + 1].coordinate) *
+          assumptions.roadCircuityFactor /
+          assumptions.technologies.brt.averageSpeedMph *
+          60
+      ), 0);
+
+    expect(path?.totalMinutes).toBeCloseTo(
+      expectedInVehicleMinutes + line.headwayMinutes / 2,
+      8
+    );
+  });
+
+  it('matches the per-pair routing oracle when paths are cached by origin', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    const lines = scenario.lines;
+    const origin = lines[0].stations[0].coordinate;
+    const graph = buildTransitGraph(lines, scenario.assumptions);
+    const cachedPaths = transitTimesFromOrigin(origin, lines, scenario.assumptions, graph);
+
+    for (const station of lines[0].stations.slice(1)) {
+      const oracle = fastestTransitPath(origin, station.coordinate, lines, scenario.assumptions, graph);
+      expect(cachedPaths.pathTo(station.coordinate)).toEqual(oracle);
+    }
   });
 
   it('routes through transfer stations between connected lines', () => {
@@ -321,6 +587,36 @@ describe('routing and ridership', () => {
     expect(path?.transferStationIds.length).toBeGreaterThan(0);
   });
 
+  it('charges more transfer time when connecting stations are farther apart', () => {
+    const assumptions = cloneAssumptions();
+    const lineA = testLine({ id: 'transfer-a' });
+    const lineB = testLine({
+      id: 'transfer-b',
+      stations: [
+        {
+          id: 'transfer-b-near',
+          lineId: 'transfer-b',
+          name: 'Near transfer',
+          coordinate: lineA.stations[1].coordinate,
+          order: 0
+        }
+      ]
+    });
+    const spacedLineB = {
+      ...lineB,
+      stations: [{ ...lineB.stations[0], coordinate: [-87.1859, 30.4734] as [number, number] }]
+    };
+    const nearGraph = buildTransitGraph([lineA, lineB], assumptions);
+    const spacedGraph = buildTransitGraph([lineA, spacedLineB], assumptions);
+    const transferMinutes = (graph: ReturnType<typeof buildTransitGraph>) =>
+      graph.get(`station:${lineA.stations[1].id}`)?.find(
+        (edge) => edge.to === `station:${lineB.stations[0].id}`
+      )?.minutes ?? Number.POSITIVE_INFINITY;
+
+    expect(transferMinutes(spacedGraph)).toBeGreaterThan(transferMinutes(nearGraph));
+    expect(transferMinutes(nearGraph)).toBe(assumptions.transferPenaltyMinutes);
+  });
+
   it('increases ridership when transit is faster', () => {
     const slowAssumptions = cloneAssumptions();
     const fastAssumptions = cloneAssumptions();
@@ -341,6 +637,95 @@ describe('routing and ridership', () => {
     const slow = estimateNetworkRidership([slowLine], testZones, assumptions).dailyRidership;
     const frequent = estimateNetworkRidership([frequentLine], testZones, assumptions).dailyRidership;
     expect(frequent).toBeGreaterThan(slow);
+  });
+
+  it('records riders on directed station-to-station segments', () => {
+    const assumptions = cloneAssumptions();
+    const line = testLine();
+    const result = estimateNetworkRidership([line], testZones, assumptions, { applyCrowding: false });
+    const outboundKey = directedSegmentKey(line.id, line.stations[0].id, line.stations[1].id);
+    const inboundKey = directedSegmentKey(line.id, line.stations[1].id, line.stations[0].id);
+
+    expect(result.segmentRidership.get(outboundKey)).toBeGreaterThan(0);
+    expect(result.segmentRidership.get(inboundKey)).toBeGreaterThan(0);
+  });
+
+  it('credits transit activity to both origin and destination zones', () => {
+    const assumptions = cloneAssumptions();
+    const activityZones: SimulationZone[] = [
+      { ...testZones[0], jobs: 0 },
+      { ...testZones[1], population: 0, households: 0 }
+    ];
+    const line = testLine();
+    const result = estimateNetworkRidership([line], activityZones, assumptions, {
+      applyCrowding: false
+    });
+    const destinationTrips = result.zoneTransitTrips.get(activityZones[1].id) ?? 0;
+    const originOnlyTrips = new Map(activityZones.map((zone) => [zone.id, 0]));
+    originOnlyTrips.set(activityZones[0].id, result.zoneTransitTrips.get(activityZones[0].id) ?? 0);
+    const creditedDevelopment = projectDevelopment(
+      activityZones,
+      new Map(activityZones.map((zone) => [zone.id, 0])),
+      result.zoneTransitTrips,
+      assumptions,
+      5
+    );
+    const originOnlyDevelopment = projectDevelopment(
+      activityZones,
+      new Map(activityZones.map((zone) => [zone.id, 0])),
+      originOnlyTrips,
+      assumptions,
+      5
+    );
+
+    expect(destinationTrips).toBeGreaterThan(0);
+    expect(creditedDevelopment[1].developmentPressure).toBeGreaterThan(
+      originOnlyDevelopment[1].developmentPressure
+    );
+  });
+
+  it('reduces ridership when a low-capacity line is overcrowded', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.averageSpeedMph = 28;
+    assumptions.technologies.brt.dwellMinutesPerStop = 0;
+    assumptions.technologies.brt.vehicleCapacity = 5;
+    assumptions.technologies['light-rail'].averageSpeedMph = 28;
+    assumptions.technologies['light-rail'].dwellMinutesPerStop = 0;
+    assumptions.technologies['light-rail'].vehicleCapacity = 5_000;
+    const lowCapacityLine = testLine({ id: 'low-capacity', technology: 'brt' });
+    const highCapacityLine = testLine({ id: 'high-capacity', technology: 'light-rail' });
+    const lowCapacity = estimateNetworkRidership([lowCapacityLine], testZones, assumptions);
+    const highCapacity = estimateNetworkRidership([highCapacityLine], testZones, assumptions);
+
+    expect(lowCapacity.lineCrowdingMultipliers.get(lowCapacityLine.id)).toBeGreaterThan(1);
+    expect(highCapacity.lineCrowdingMultipliers.get(highCapacityLine.id)).toBe(1);
+    expect(highCapacity.dailyRidership).toBeGreaterThan(lowCapacity.dailyRidership);
+  });
+
+  it('relieves crowding when frequency doubles', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 10;
+    const halfHourlyLine = testLine({ id: 'half-hourly', headwayMinutes: 30 });
+    const quarterHourlyLine = testLine({ id: 'quarter-hourly', headwayMinutes: 15 });
+    const halfHourly = estimateNetworkRidership([halfHourlyLine], testZones, assumptions);
+    const quarterHourly = estimateNetworkRidership([quarterHourlyLine], testZones, assumptions);
+
+    expect(halfHourly.lineCrowdingMultipliers.get(halfHourlyLine.id)).toBeGreaterThan(
+      quarterHourly.lineCrowdingMultipliers.get(quarterHourlyLine.id) ?? 1
+    );
+    expect(quarterHourly.dailyRidership).toBeGreaterThan(halfHourly.dailyRidership);
+  });
+
+  it('leaves uncrowded assignment byte-identical to capacity-disabled assignment', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 100_000;
+    const line = testLine();
+    const withoutCapacity = estimateNetworkRidership([line], testZones, assumptions, {
+      applyCrowding: false
+    });
+    const uncrowded = estimateNetworkRidership([line], testZones, assumptions);
+
+    expect(uncrowded).toEqual(withoutCapacity);
   });
 
   it('increases ridership when stations are near population and jobs', () => {
@@ -415,6 +800,48 @@ describe('routing and ridership', () => {
     expect(secondLineResult?.weekdayRidership).toBeGreaterThan(0);
   });
 
+  it('spreads riders across near-equal parallel paths', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.vehicleCapacity = 100_000;
+    const firstLine = testLine({ id: 'parallel-a' });
+    const secondLine = testLine({ id: 'parallel-b' });
+    const result = estimateNetworkRidership([firstLine, secondLine], testZones, assumptions, {
+      applyCrowding: false
+    });
+    const firstRidership = result.lineRidership.get(firstLine.id) ?? 0;
+    const secondRidership = result.lineRidership.get(secondLine.id) ?? 0;
+
+    expect(firstRidership).toBeGreaterThan(0);
+    expect(secondRidership).toBeGreaterThan(0);
+    expect(firstRidership).toBeCloseTo(secondRidership, 8);
+  });
+
+  it('weights a slightly slower path lower and excludes a poor alternative', () => {
+    const assumptions = cloneAssumptions();
+    const line = testLine();
+    const basePath = fastestTransitPath(
+      testZones[0].centroid,
+      testZones[1].centroid,
+      [line],
+      assumptions
+    );
+    if (!basePath) {
+      throw new Error('Path fixture is missing');
+    }
+    const choices = spreadTransitPaths(
+      [
+        basePath,
+        { ...basePath, destinationStationId: 'slower', totalMinutes: basePath.totalMinutes + 2 },
+        { ...basePath, destinationStationId: 'poor', totalMinutes: basePath.totalMinutes + 20 }
+      ],
+      assumptions
+    );
+
+    expect(choices).toHaveLength(2);
+    expect(choices[0].share).toBeGreaterThan(choices[1].share);
+    expect(choices.reduce((sum, choice) => sum + choice.share, 0)).toBeCloseTo(1, 10);
+  });
+
   it('decreases ridership when transit travel time is dramatically worse', () => {
     const assumptions = cloneAssumptions();
     const normalLine = testLine({ id: 'normal' });
@@ -436,6 +863,67 @@ describe('routing and ridership', () => {
     const base = estimateNetworkRidership([line], testZones, baseAssumptions).dailyRidership;
     const expensive = estimateNetworkRidership([line], testZones, expensiveAssumptions).dailyRidership;
     expect(expensive).toBeCloseTo(base, 8);
+  });
+
+  it('matches the pre-generalized-cost demo when both monetary costs are zero', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.assumptions.defaultFare = 0;
+    scenario.assumptions.carCostPerMile = 0;
+    scenario.assumptions.transitSpecificConstantMinutes = 0;
+    scenario.assumptions.specialGeneratorDemandBonus = 0;
+    Object.values(scenario.assumptions.technologies).forEach((technology) => {
+      technology.dwellMinutesPerStop = 0;
+    });
+
+    const result = runSimulation(scenario, PENSACOLA_ZONES);
+    expect(result.dailyRidership).toBeCloseTo(1646.797254908448, 8);
+  });
+
+  it('keeps default demo ridership within the calibration band', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.assumptions.transitSpecificConstantMinutes = 0;
+    Object.values(scenario.assumptions.technologies).forEach((technology) => {
+      technology.dwellMinutesPerStop = 0;
+    });
+    const result = runSimulation(scenario, PENSACOLA_ZONES);
+    const calibratedRidership = 1248.5188825179691;
+
+    expect(result.dailyRidership).toBeGreaterThan(calibratedRidership * 0.75);
+    expect(result.dailyRidership).toBeLessThan(calibratedRidership * 1.25);
+  });
+
+  it('keeps the mode-choice-calibrated demo within its gameplay target band', () => {
+    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+
+    expect(result.dailyRidership).toBeGreaterThan(75);
+    expect(result.dailyRidership).toBeLessThan(350);
+  });
+
+  it('decreases ridership monotonically as fares increase', () => {
+    const fares = [0, 2, 4, 6, 8, 10];
+    const riders = fares.map((fare) => {
+      const assumptions = cloneAssumptions();
+      assumptions.defaultFare = fare;
+      return estimateNetworkRidership([testLine()], testZones, assumptions).dailyRidership;
+    });
+
+    for (let index = 1; index < riders.length; index += 1) {
+      expect(riders[index]).toBeLessThan(riders[index - 1]);
+    }
+  });
+
+  it('produces an interior fare-revenue maximum on a zero-to-ten-dollar sweep', () => {
+    const fares = Array.from({ length: 11 }, (_, fare) => fare);
+    const revenues = fares.map((fare) => {
+      const assumptions = cloneAssumptions();
+      assumptions.defaultFare = fare;
+      const riders = estimateNetworkRidership([testLine()], testZones, assumptions).dailyRidership;
+      return riders * fare * assumptions.annualizationFactor;
+    });
+    const maximumIndex = revenues.indexOf(Math.max(...revenues));
+
+    expect(maximumIndex).toBeGreaterThan(0);
+    expect(maximumIndex).toBeLessThan(fares.length - 1);
   });
 });
 
@@ -462,11 +950,108 @@ describe('development and deterministic runs', () => {
     );
   });
 
+  it('compounds five-year growth and consumes development capacity', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.developmentGrowthRatePerFiveYears = 0.1;
+    assumptions.developmentAccessibilityWeight = 1;
+    assumptions.developmentTransitSuccessWeight = 0;
+    assumptions.developmentDowntownWeight = 0;
+    const zone = { ...testZones[0], developmentCapacity: 0.8 };
+    const projected = projectDevelopment(
+      [zone],
+      new Map([[zone.id, 1]]),
+      new Map([[zone.id, 0]]),
+      assumptions,
+      10
+    );
+    const grown = applyDevelopmentGrowth([zone], projected, assumptions)[0];
+    const expectedGrowth = (1 + 0.08) * (1 + 0.072) - 1;
+
+    expect(projected[0].populationGrowth).toBe(Math.round(zone.population * expectedGrowth));
+    expect(projected[0].developmentCapacityUsed).toBeCloseTo(0.152, 8);
+    expect(grown.developmentCapacity).toBeCloseTo(0.648, 8);
+    expect(grown.households).toBe(Math.round(grown.population / assumptions.averageHouseholdSize));
+  });
+
+  it('identifies an airport station by coordinates rather than its name', () => {
+    const scenario: Scenario = {
+      id: 'airport-fixture',
+      name: 'Airport Fixture',
+      lines: [testLine({ id: 'airport-fixture-line' })],
+      assumptions: cloneAssumptions(),
+      simulationYear: 0,
+      budgetLimitsEnabled: false
+    };
+    const airportStation = scenario.lines[0].stations.find(
+      (station) => station.coordinate[0] === scenario.assumptions.airportCoordinate[0] &&
+        station.coordinate[1] === scenario.assumptions.airportCoordinate[1]
+    );
+    if (!airportStation) {
+      throw new Error('Airport station fixture is missing');
+    }
+    airportStation.name = 'Terminal Connector';
+
+    expect(nearestStationIdWithinRadius(
+      scenario,
+      scenario.assumptions.airportCoordinate,
+      scenario.assumptions.specialGeneratorRadiusMiles
+    )).toBe(airportStation.id);
+  });
+
+  it('grows future regional demand with and without transit', () => {
+    const noTransitScenario = cloneScenario(DEMO_SCENARIO);
+    noTransitScenario.lines = [];
+    noTransitScenario.simulationYear = 20;
+    const transitScenario = cloneScenario(noTransitScenario);
+    transitScenario.lines = [testLine()];
+    const noTransit = runSimulation(noTransitScenario, testZones);
+    const withTransit = runSimulation(transitScenario, testZones);
+
+    expect(noTransit.baseDailyRegionalTrips).toBe(DEFAULT_ASSUMPTIONS.totalDailyRegionalTrips);
+    expect(noTransit.modeledDailyRegionalTrips).toBeGreaterThan(noTransit.baseDailyRegionalTrips);
+    expect(withTransit.modeledDailyRegionalTrips).toBeGreaterThan(noTransit.modeledDailyRegionalTrips);
+  });
+
   it('produces identical model results for identical scenarios', () => {
     const scenarioA = cloneScenario(DEMO_SCENARIO);
     const scenarioB = cloneScenario(DEMO_SCENARIO);
     const resultA = runSimulation(scenarioA, PENSACOLA_ZONES);
     const resultB = runSimulation(scenarioB, PENSACOLA_ZONES);
     expect(resultA).toEqual(resultB);
+  });
+
+  it('reports capital plus operating cost per annual rider', () => {
+    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+
+    expect(result.annualizedCapitalCost).toBeGreaterThan(0);
+    expect(result.annualizedCostPerRider).toBeCloseTo(
+      (result.annualizedCapitalCost + result.annualOperatingCost) / result.annualRidership,
+      8
+    );
+  });
+
+  it('reports zero annualized cost per rider when no riders are served', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+
+    expect(runSimulation(scenario, testZones).annualizedCostPerRider).toBe(0);
+  });
+
+  it('reuses the first model pass for present-day results', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.simulationYear = 0;
+    const ridership = estimateNetworkRidership(scenario.lines, testZones, scenario.assumptions);
+    const accessibility = calculateAccessibilityScores(scenario.lines, testZones, scenario.assumptions);
+    const expectedDevelopment = projectDevelopment(
+      testZones,
+      accessibility,
+      ridership.zoneTransitTrips,
+      scenario.assumptions,
+      0
+    );
+    const result = runSimulation(scenario, testZones);
+
+    expect(result.dailyRidership).toBe(ridership.dailyRidership);
+    expect(result.zoneResults).toEqual(expectedDevelopment);
   });
 });
