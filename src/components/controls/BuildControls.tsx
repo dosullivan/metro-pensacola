@@ -15,6 +15,7 @@ import {
 import { useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { FREQUENCIES } from '../../data/assumptions';
+import { FUNDING_MILESTONES, fundingMilestoneValue } from '../../data/gameplay';
 import { calculateAnnualOperatingCost, calculateConstructionCost, calculateLineMileage, calculateScenarioCapitalCost, calculateScenarioOperatingCost } from '../../simulation/costs';
 import { selectActiveScenario, useScenarioStore } from '../../store/scenarioStore';
 import type { FrequencyMinutes, TransitTechnologyId } from '../../types';
@@ -60,8 +61,10 @@ export function BuildControls() {
   const canUseRoadSnap = snapTechnology === 'brt' || snapTechnology === 'light-rail';
   const capitalCost = calculateScenarioCapitalCost(scenario.lines, scenario.assumptions);
   const operatingCost = calculateScenarioOperatingCost(scenario.lines, scenario.assumptions);
-  const remainingCapital = scenario.assumptions.capitalBudget - capitalCost;
-  const remainingOperating = scenario.assumptions.annualOperatingBudget - operatingCost;
+  const remainingCapital = scenario.career?.remainingCapital ?? scenario.assumptions.capitalBudget - capitalCost;
+  const operatingSubsidy = scenario.results?.operatingSubsidy ?? operatingCost;
+  const operatingLimit = scenario.career?.annualOperatingSubsidyCap ?? scenario.assumptions.annualOperatingBudget;
+  const remainingOperating = operatingLimit - operatingSubsidy;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -330,20 +333,41 @@ export function BuildControls() {
 
       <div className="budget-strip">
         <div>
-          <span>Capital</span>
-          <strong>{formatCurrency(capitalCost)}</strong>
+          <span>{scenario.gameMode === 'career' ? 'Capital Funds' : 'Capital'}</span>
+          <strong>{formatCurrency(scenario.gameMode === 'career' ? remainingCapital : capitalCost)}</strong>
           <small className={remainingCapital < 0 && scenario.budgetLimitsEnabled ? 'bad' : ''}>
-            {formatCurrency(remainingCapital)} left
+            {scenario.gameMode === 'career' ? `${formatCurrency(capitalCost)} built` : `${formatCurrency(remainingCapital)} left`}
           </small>
         </div>
         <div>
-          <span>Operating</span>
-          <strong>{formatCurrency(operatingCost)}/yr</strong>
+          <span>{scenario.gameMode === 'career' ? 'Operating Subsidy' : 'Operating'}</span>
+          <strong>{formatCurrency(operatingSubsidy)}/yr</strong>
           <small className={remainingOperating < 0 && scenario.budgetLimitsEnabled ? 'bad' : ''}>
-            {formatCurrency(remainingOperating)} left
+            {formatCurrency(operatingLimit)} cap
           </small>
         </div>
       </div>
+
+      {scenario.gameMode === 'career' && scenario.career ? (
+        <div className="milestone-list">
+          <div className="panel-title small">Funding Milestones</div>
+          {FUNDING_MILESTONES.map((milestone) => {
+            const unlocked = scenario.career?.unlockedMilestoneIds.includes(milestone.id) ?? false;
+            const value = fundingMilestoneValue(milestone, scenario.results);
+            const progress = Math.min(100, (value / milestone.target) * 100);
+            return (
+              <div className={unlocked ? 'milestone unlocked' : 'milestone'} key={milestone.id}>
+                <div>
+                  <strong>{milestone.title}</strong>
+                  <small>{unlocked ? 'Funded' : `${formatNumber(value)} / ${formatNumber(milestone.target)}`}</small>
+                </div>
+                <div className="milestone-track"><span style={{ width: `${unlocked ? 100 : progress}%` }} /></div>
+                <small>{milestone.description} +{formatCurrency(milestone.capitalGrant)}</small>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,12 +1,18 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { DEFAULT_ASSUMPTIONS } from '../data/assumptions';
+import {
+  DEMOLITION_REFUND_FRACTION,
+  createCareerProgress,
+  unlockFundingMilestones
+} from '../data/gameplay';
 import { DEMO_SCENARIO } from '../data/pensacola/demoScenario';
 import { PENSACOLA_ZONES } from '../data/pensacola/zones';
 import { runSimulation } from '../simulation/runSimulation';
 import { runSimulationAsync, supportsSimulationWorker } from '../simulation/simulationClient';
 import { distanceMiles, makeId } from '../simulation/geo';
 import { snapCoordinateToLineGeometry } from '../simulation/snapping';
+import { calculateScenarioCapitalCost } from '../simulation/costs';
 import type {
   AppMode,
   BuildTool,
@@ -228,6 +234,42 @@ function updateActiveScenario(
       scenario.id === activeScenario.id ? updater(scenario) : scenario
     ),
     activeScenarioId: activeScenario.id
+  };
+}
+
+function applyConstructionUpdate(
+  state: ScenarioState,
+  updater: (scenario: Scenario) => Scenario
+): { update: Partial<ScenarioState>; applied: boolean } {
+  const activeScenario = getActiveScenario(state);
+  const nextScenario = updater(activeScenario);
+  if (activeScenario.gameMode !== 'career' || !activeScenario.career) {
+    return { update: updateActiveScenario(state, () => nextScenario), applied: true };
+  }
+  const career = activeScenario.career;
+
+  const previousCost = calculateScenarioCapitalCost(activeScenario.lines, activeScenario.assumptions);
+  const nextCost = calculateScenarioCapitalCost(nextScenario.lines, nextScenario.assumptions);
+  const capitalDelta = nextCost - previousCost;
+  if (capitalDelta > career.remainingCapital + 0.01) {
+    return {
+      update: {
+        simulationNotice: `That change costs $${Math.ceil(capitalDelta).toLocaleString()}, but only $${Math.floor(career.remainingCapital).toLocaleString()} remains.`
+      },
+      applied: false
+    };
+  }
+
+  const remainingCapital =
+    capitalDelta >= 0
+      ? career.remainingCapital - capitalDelta
+      : career.remainingCapital + -capitalDelta * DEMOLITION_REFUND_FRACTION;
+  return {
+    update: updateActiveScenario(state, () => ({
+      ...nextScenario,
+      career: { ...career, remainingCapital }
+    })),
+    applied: true
   };
 }
 
@@ -562,13 +604,27 @@ export const useScenarioStore = create<ScenarioState>()(
           }))
         ),
       setScenarioGameMode: (gameMode) =>
-        set((state) =>
-          updateActiveScenario(state, (scenario) => ({
-            ...scenario,
-            gameMode,
-            autoSimulationEnabled: gameMode === 'career'
-          }))
-        ),
+        set((state) => {
+          const scenario = getActiveScenario(state);
+          if (scenario.gameMode === gameMode) return {};
+          if (gameMode === 'career') {
+            const repairedScenario = scenarioWithGeometryOnlyLinesRepaired(scenario).scenario;
+            const existingCost = calculateScenarioCapitalCost(repairedScenario.lines, repairedScenario.assumptions);
+            return updateActiveScenario(state, (current) => ({
+              ...repairedScenario,
+              gameMode: 'career',
+              autoSimulationEnabled: true,
+              budgetLimitsEnabled: true,
+              career: createCareerProgress(existingCost)
+            }));
+          }
+          return updateActiveScenario(state, (current) => ({
+            ...current,
+            gameMode: 'sandbox',
+            autoSimulationEnabled: false,
+            career: undefined
+          }));
+        }),
       toggleAutoSimulation: () =>
         set((state) =>
           updateActiveScenario(state, (scenario) => ({
@@ -643,7 +699,7 @@ export const useScenarioStore = create<ScenarioState>()(
         }),
       addRoutePoint: (coordinate) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => {
+          applyConstructionUpdate(state, (scenario) => {
             let selectedLineId = state.selectedLineId;
             let lines = scenario.lines;
             if (!selectedLineId || !scenario.lines.some((line) => line.id === selectedLineId)) {
@@ -659,13 +715,13 @@ export const useScenarioStore = create<ScenarioState>()(
               ),
               results: undefined
             };
-          })
+          }).update
         ),
       addRouteStop: (coordinate, geometrySegment) =>
         set((state) => {
           let nextLineId = state.selectedLineId;
           let nextStationId: string | undefined;
-          const update = updateActiveScenario(state, (scenario) => {
+          const transaction = applyConstructionUpdate(state, (scenario) => {
             let selectedLineId = state.selectedLineId;
             let lines = scenario.lines;
             if (!selectedLineId || !scenario.lines.some((line) => line.id === selectedLineId)) {
@@ -702,8 +758,9 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           });
 
+          if (!transaction.applied) return transaction.update;
           return {
-            ...update,
+            ...transaction.update,
             selectedLineId: nextLineId,
             selectedStationId: nextStationId,
             selectedRoutePointIndex: undefined,
@@ -717,7 +774,7 @@ export const useScenarioStore = create<ScenarioState>()(
         set((state) => {
           let nextLineId = state.selectedLineId;
           let nextStationId: string | undefined;
-          const update = updateActiveScenario(state, (scenario) => {
+          const transaction = applyConstructionUpdate(state, (scenario) => {
             let selectedLineId = state.selectedLineId;
             let lines = scenario.lines;
             if (!selectedLineId || !scenario.lines.some((line) => line.id === selectedLineId)) {
@@ -751,8 +808,9 @@ export const useScenarioStore = create<ScenarioState>()(
             };
           });
 
+          if (!transaction.applied) return transaction.update;
           return {
-            ...update,
+            ...transaction.update,
             selectedLineId: nextLineId,
             selectedStationId: nextStationId,
             selectedRoutePointIndex: undefined,
@@ -764,7 +822,7 @@ export const useScenarioStore = create<ScenarioState>()(
         }),
       updateRoutePointCoordinate: (lineId, pointIndex, coordinate) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => ({
+          applyConstructionUpdate(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
               line.id === lineId
@@ -775,11 +833,11 @@ export const useScenarioStore = create<ScenarioState>()(
                 : line
             ),
             results: undefined
-          }))
+          })).update
         ),
       removeRoutePoint: (lineId, pointIndex) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => ({
+          applyConstructionUpdate(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
               line.id === lineId
@@ -791,11 +849,11 @@ export const useScenarioStore = create<ScenarioState>()(
             ),
             selectedRoutePointIndex: undefined,
             results: undefined
-          }))
+          })).update
         ),
       insertRoutePointAfter: (lineId, pointIndex) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => {
+          applyConstructionUpdate(state, (scenario) => {
             let insertedIndex: number | undefined;
             return {
               ...scenario,
@@ -823,11 +881,11 @@ export const useScenarioStore = create<ScenarioState>()(
               selectedRoutePointIndex: insertedIndex,
               results: undefined
             };
-          })
+          }).update
         ),
       updateStationCoordinate: (lineId, stationId, coordinate) =>
         set((state) => ({
-          ...updateActiveScenario(state, (scenario) => ({
+          ...applyConstructionUpdate(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) => {
               if (line.id !== lineId) {
@@ -846,7 +904,7 @@ export const useScenarioStore = create<ScenarioState>()(
               );
             }),
             results: undefined
-          })),
+          })).update,
           selectedLineId: lineId,
           selectedStationId: stationId,
           selectedRoutePointIndex: undefined,
@@ -880,11 +938,11 @@ export const useScenarioStore = create<ScenarioState>()(
         ),
       removeStation: (lineId, stationId) =>
         set((state) => ({
-          ...updateActiveScenario(state, (scenario) => ({
+          ...applyConstructionUpdate(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) => (line.id === lineId ? withoutStation(line, stationId) : line)),
             results: undefined
-          })),
+          })).update,
           selectedLineId: lineId,
           selectedStationId: undefined,
           selectedRoutePointIndex: undefined,
@@ -902,7 +960,7 @@ export const useScenarioStore = create<ScenarioState>()(
         ),
       updateLineTechnology: (lineId, technology) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => {
+          applyConstructionUpdate(state, (scenario) => {
             const technologyConfig = scenario.assumptions.technologies[technology];
             return {
               ...scenario,
@@ -913,7 +971,7 @@ export const useScenarioStore = create<ScenarioState>()(
               ),
               results: undefined
             };
-          })
+          }).update
         ),
       renameLine: (lineId, name) =>
         set((state) =>
@@ -940,21 +998,21 @@ export const useScenarioStore = create<ScenarioState>()(
         ),
       removeLastRoutePoint: (lineId) =>
         set((state) =>
-          updateActiveScenario(state, (scenario) => ({
+          applyConstructionUpdate(state, (scenario) => ({
             ...scenario,
             lines: scenario.lines.map((line) =>
               line.id === lineId ? withLastRoutePointRemoved(line) : line
             ),
             selectedRoutePointIndex: undefined,
             results: undefined
-          }))
+          })).update
         ),
       removeSelected: () =>
         set((state) => {
           const selectedStationId = state.selectedStationId;
           const selectedLineId = state.selectedLineId;
           const selectedRoutePointIndex = state.selectedRoutePointIndex;
-          const update = updateActiveScenario(state, (scenario) => {
+          const transaction = applyConstructionUpdate(state, (scenario) => {
             if (selectedLineId && selectedRoutePointIndex !== undefined) {
               return {
                 ...scenario,
@@ -988,7 +1046,7 @@ export const useScenarioStore = create<ScenarioState>()(
             return scenario;
           });
           return {
-            ...update,
+            ...transaction.update,
             selectedStationId: selectedStationId ? undefined : state.selectedStationId,
             selectedRoutePointIndex: undefined,
             selectedLineId:
@@ -1001,12 +1059,12 @@ export const useScenarioStore = create<ScenarioState>()(
       repairGeometryOnlyLines: () =>
         set((state) => {
           let didRepair = false;
-          const update = updateActiveScenario(state, (scenario) => {
+          const transaction = applyConstructionUpdate(state, (scenario) => {
             const repaired = scenarioWithGeometryOnlyLinesRepaired(scenario);
             didRepair = repaired.changed;
             return repaired.scenario;
           });
-          return didRepair ? update : {};
+          return didRepair ? transaction.update : {};
         }),
       runActiveSimulation: (source = 'manual') => {
         if (get().isSimulating) {
@@ -1048,12 +1106,35 @@ export const useScenarioStore = create<ScenarioState>()(
                   : 'The scenario changed during the run. Run the simulation again.'
               };
             }
+            const milestoneUpdate =
+              currentScenario.gameMode === 'career' && currentScenario.career
+                ? unlockFundingMilestones(currentScenario.career, results)
+                : undefined;
+            const milestoneMessages =
+              milestoneUpdate?.unlocked.map((milestone) => ({
+                id: `funding-${milestone.id}`,
+                title: milestone.title,
+                body: `$${milestone.capitalGrant.toLocaleString()} in new capital funding has been awarded.`
+              })) ?? [];
+            const completedResults = {
+              ...results,
+              messages: [...milestoneMessages, ...(results.messages ?? [])]
+            };
+            const completedNotice = milestoneUpdate?.unlocked.length
+              ? `${milestoneUpdate.unlocked.map((milestone) => milestone.title).join(', ')} unlocked.`
+              : simulationNotice;
             return {
               scenarios: state.scenarios.map((scenario) =>
-                scenario.id === currentScenario.id ? { ...currentScenario, results } : scenario
+                scenario.id === currentScenario.id
+                  ? {
+                      ...currentScenario,
+                      career: milestoneUpdate?.progress ?? currentScenario.career,
+                      results: completedResults
+                    }
+                  : scenario
               ),
               isSimulating: false,
-              simulationNotice
+              simulationNotice: completedNotice
             };
           });
           if (shouldReschedule) {
@@ -1096,13 +1177,23 @@ export const useScenarioStore = create<ScenarioState>()(
           ...persisted,
           isSimulating: false,
           scenarios:
-            persisted.scenarios?.map((scenario) => ({
-              ...scenario,
-              gameMode: scenario.gameMode ?? 'sandbox',
-              autoSimulationEnabled:
-                scenario.gameMode === 'career' ? (scenario.autoSimulationEnabled ?? true) : false,
-              assumptions: assumptionsWithDefaults(scenario.assumptions)
-            })) ?? currentState.scenarios
+            persisted.scenarios?.map((scenario) => {
+              const assumptions = assumptionsWithDefaults(scenario.assumptions);
+              const gameMode = scenario.gameMode ?? 'sandbox';
+              const repairedScenario = scenarioWithGeometryOnlyLinesRepaired({ ...scenario, assumptions }).scenario;
+              const capitalCost = calculateScenarioCapitalCost(repairedScenario.lines, assumptions);
+              return {
+                ...repairedScenario,
+                gameMode,
+                autoSimulationEnabled:
+                  gameMode === 'career' ? (scenario.autoSimulationEnabled ?? true) : false,
+                assumptions,
+                career:
+                  gameMode === 'career'
+                    ? (scenario.career ?? createCareerProgress(capitalCost))
+                    : undefined
+              };
+            }) ?? currentState.scenarios
         };
       }
     }

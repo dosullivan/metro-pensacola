@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_ASSUMPTIONS } from '../src/data/assumptions';
+import { createCareerProgress } from '../src/data/gameplay';
 import { DEMO_SCENARIO } from '../src/data/pensacola/demoScenario';
 import { snapCoordinateToLineGeometry } from '../src/simulation/snapping';
 import { selectActiveScenario, useScenarioStore } from '../src/store/scenarioStore';
@@ -142,6 +143,23 @@ describe('scenario store simulation action', () => {
     );
     expect(mergedScenario.gameMode).toBe('sandbox');
     expect(mergedScenario.autoSimulationEnabled).toBe(false);
+  });
+
+  it('preserves Career finance state through the persistence merge', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.gameMode = 'career';
+    scenario.career = {
+      ...createCareerProgress(),
+      remainingCapital: 123_456_789,
+      unlockedMilestoneIds: ['first-300-riders']
+    };
+    const currentState = useScenarioStore.getState();
+    const merged = useScenarioStore.persist.getOptions().merge?.(
+      { scenarios: [scenario], activeScenarioId: scenario.id },
+      currentState
+    ) as typeof currentState;
+
+    expect(selectActiveScenario(merged).career).toEqual(scenario.career);
   });
 
   it('shows an explicit notice when there is no usable service', () => {
@@ -354,6 +372,38 @@ describe('scenario store simulation action', () => {
       [-87.22, 30.42],
       [-87.18, 30.46]
     ]);
+  });
+
+  it('blocks a Career construction edit that exceeds remaining capital', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    scenario.gameMode = 'career';
+    scenario.autoSimulationEnabled = false;
+    scenario.career = { ...createCareerProgress(), remainingCapital: 5_000_000 };
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    useScenarioStore.getState().addRouteStop([-86.22, 30.42]);
+
+    const active = selectActiveScenario(useScenarioStore.getState());
+    expect(active.lines[0].stations).toHaveLength(1);
+    expect(active.career?.remainingCapital).toBe(2_000_000);
+    expect(useScenarioStore.getState().simulationNotice).toContain('only $2,000,000 remains');
+  });
+
+  it('refunds half the removed construction value in Career mode', () => {
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    scenario.lines = [];
+    scenario.gameMode = 'career';
+    scenario.autoSimulationEnabled = false;
+    scenario.career = createCareerProgress();
+    resetStore(scenario);
+
+    useScenarioStore.getState().addRouteStop([-87.22, 30.42]);
+    expect(selectActiveScenario(useScenarioStore.getState()).career?.remainingCapital).toBe(497_000_000);
+    useScenarioStore.getState().removeSelected();
+
+    expect(selectActiveScenario(useScenarioStore.getState()).career?.remainingCapital).toBe(498_500_000);
   });
 
   it('creates stations when drawing a route in the default route build mode', () => {

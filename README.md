@@ -36,7 +36,7 @@ npm run build
 - Toggle population, employment, density, accessibility, ridership, development, land value, and station catchment overlays.
 - Automatically persist scenarios in browser storage, with controls to switch, duplicate, delete, restore, and compare them.
 - Keep the classic manual-run Sandbox workflow, or switch a scenario to Career mode for debounced live simulation with latest-change-wins worker scheduling.
-- Show advisory capital and operating budgets; enabling Budget Limits highlights overruns but does not block construction.
+- Use advisory capital and operating budgets in Sandbox, or persistent hard capital funds in Career. Career construction spends funds, demolition returns 50%, and one-time ridership, access, and crowding milestones award new grants.
 - Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 
 ## Architecture

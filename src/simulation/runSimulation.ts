@@ -24,7 +24,8 @@ import { distanceMiles } from './geo';
 
 function lineResults(
   scenario: Scenario,
-  ridershipByLine: Map<string, number>
+  ridershipByLine: Map<string, number>,
+  crowdingByLine: Map<string, number>
 ): LineResults[] {
   return scenario.lines.map((line) => {
     const mileage = calculateLineMileage(line);
@@ -38,7 +39,8 @@ function lineResults(
       constructionCost: calculateConstructionCost(line, scenario.assumptions),
       operatingCost: calculateAnnualOperatingCost(line, scenario.assumptions),
       weekdayRidership,
-      ridersPerMile: mileage > 0 ? weekdayRidership / mileage : 0
+      ridersPerMile: mileage > 0 ? weekdayRidership / mileage : 0,
+      crowdingMultiplier: crowdingByLine.get(line.id) ?? 1
     };
   });
 }
@@ -207,7 +209,7 @@ export function runSimulation(scenario: Scenario, baseZones: SimulationZone[]): 
   const systemCatchment = calculateSystemCatchment(scenario.lines, zones, scenario.assumptions);
   const averageRiderTravelTimeSavings =
     dailyRidership > 0 ? ridership.weightedTimeSavings / dailyRidership : 0;
-  const lines = lineResults(scenario, ridership.lineRidership);
+  const lines = lineResults(scenario, ridership.lineRidership, ridership.lineCrowdingMultipliers);
   const stations = stationResults(
     scenario,
     zones,

@@ -407,6 +407,48 @@ select {
   padding-top: 8px;
 }
 
+.milestone-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.milestone {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(244, 241, 234, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px;
+}
+
+.milestone > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.milestone small {
+  color: #b9b0a3;
+  font-size: 10px;
+}
+
+.milestone.unlocked strong,
+.milestone.unlocked > div:first-child small {
+  color: #5eead4;
+}
+
+.milestone-track {
+  height: 4px;
+  overflow: hidden;
+  background: rgba(244, 241, 234, 0.1);
+}
+
+.milestone-track span {
+  display: block;
+  height: 100%;
+  background: #2dd4bf;
+}
+
 .bad {
   color: #fca5a5 !important;
 }

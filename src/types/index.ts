@@ -154,7 +154,14 @@ export interface Scenario {
   assumptions: SimulationAssumptions;
   simulationYear: number;
   budgetLimitsEnabled: boolean;
+  career?: CareerProgress;
   results?: SimulationResults;
+}
+
+export interface CareerProgress {
+  remainingCapital: number;
+  annualOperatingSubsidyCap: number;
+  unlockedMilestoneIds: string[];
 }
 
 export interface LineResults {
@@ -167,6 +174,7 @@ export interface LineResults {
   operatingCost: number;
   weekdayRidership: number;
   ridersPerMile: number;
+  crowdingMultiplier: number;
 }
 
 export interface StationResults {

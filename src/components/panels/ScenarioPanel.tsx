@@ -95,9 +95,11 @@ export function ScenarioPanel() {
         ))}
       </div>
 
-      <button className={scenario.budgetLimitsEnabled ? 'toggle wide active' : 'toggle wide'} onClick={toggleBudgetLimits}>
-        Budget Limits {scenario.budgetLimitsEnabled ? 'On' : 'Off'}
-      </button>
+      {scenario.gameMode === 'sandbox' ? (
+        <button className={scenario.budgetLimitsEnabled ? 'toggle wide active' : 'toggle wide'} onClick={toggleBudgetLimits}>
+          Advisory Budgets {scenario.budgetLimitsEnabled ? 'On' : 'Off'}
+        </button>
+      ) : null}
 
       <div className="compare-list">
         {scenarios.map((candidate) => (

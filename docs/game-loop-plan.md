@@ -32,6 +32,8 @@ The single change that creates an early game: you cannot afford rail on day one.
 - UI: funds panel (remaining capital, ops subsidy vs. cost) and a milestone list with progress bars.
 - Tests: over-budget edit blocked; milestone unlocks exactly once and adds funds; refund math; persistence round-trip through the store merge.
 
+Status: completed. Career scenarios persist a $500M starting capital account and $25M annual operating-subsidy cap. All capital-changing build actions use one transaction path: additions and upgrades spend their incremental construction cost, unaffordable edits are rejected with an explicit notice, and removals refund 50% of the retired value. Existing networks are grandfathered when switching modes—their construction value is deducted from starting funds, floored at zero—so old saves remain playable without receiving surplus cash. Three milestones live in `src/data/gameplay.ts`, unlock once from simulation outputs, add grants, and prepend funding news to the result messages. The build panel shows capital funds, subsidy against its cap, and milestone progress. Store and pure-logic tests cover blocking, refund math, one-time grants, and persistence.
+
 ## Phase 3 — Advancing time
 
 Turn the +5/+10/+20 dropdown into a clock the player drives.
