@@ -121,14 +121,17 @@ export function buildTransitGraph(
       const to = orderedStations[index + 1];
       const miles = distanceMiles(from.coordinate, to.coordinate) * assumptions.roadCircuityFactor;
       const minutes = minutesForDistance(miles, technology.averageSpeedMph);
+      const forwardDwellMinutes =
+        index + 1 < orderedStations.length - 1 ? technology.dwellMinutesPerStop : 0;
+      const reverseDwellMinutes = index > 0 ? technology.dwellMinutesPerStop : 0;
       addEdge(lineNode(from.id, line.id), {
         to: lineNode(to.id, line.id),
-        minutes,
+        minutes: minutes + forwardDwellMinutes,
         lineId: line.id
       });
       addEdge(lineNode(to.id, line.id), {
         to: lineNode(from.id, line.id),
-        minutes,
+        minutes: minutes + reverseDwellMinutes,
         lineId: line.id
       });
     }

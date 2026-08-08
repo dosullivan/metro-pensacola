@@ -8,6 +8,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       capitalCostPerMile: 25_000_000,
       stationCost: 3_000_000,
       averageSpeedMph: 22,
+      dwellMinutesPerStop: 0.4,
       baseOperatingCostPer15Miles: 12_000_000,
       color: '#2dd4bf'
     },
@@ -17,6 +18,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       capitalCostPerMile: 150_000_000,
       stationCost: 15_000_000,
       averageSpeedMph: 28,
+      dwellMinutesPerStop: 0.5,
       baseOperatingCostPer15Miles: 30_000_000,
       color: '#facc15'
     },
@@ -26,6 +28,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       capitalCostPerMile: 400_000_000,
       stationCost: 50_000_000,
       averageSpeedMph: 38,
+      dwellMinutesPerStop: 0.65,
       baseOperatingCostPer15Miles: 45_000_000,
       color: '#60a5fa'
     },
@@ -35,6 +38,7 @@ export const DEFAULT_ASSUMPTIONS: SimulationAssumptions = {
       capitalCostPerMile: 800_000_000,
       stationCost: 120_000_000,
       averageSpeedMph: 42,
+      dwellMinutesPerStop: 0.65,
       baseOperatingCostPer15Miles: 70_000_000,
       color: '#f472b6'
     }

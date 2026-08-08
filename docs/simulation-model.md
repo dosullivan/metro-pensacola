@@ -88,6 +88,7 @@ Transit routing uses Dijkstra over a station graph:
 - Base station nodes represent platforms or transfer points.
 - Boarding an onboard line state adds average wait time.
 - Adjacent stations on the same line are connected by in-vehicle time.
+- Arriving at a non-terminal station adds the technology's dwell time; an end-to-end trip on an N-station line incurs N−2 dwells.
 - Stations within 400 feet receive transfer edges. In build mode, placing or dragging a stop near a stop on another line snaps to that stop location so the transfer is explicit.
 - Transfers add a penalty, and boarding the next line adds its wait time.
 
@@ -102,6 +103,7 @@ transitPhysicalTime =
   accessWalkTime
   + averageWaitTime
   + inVehicleTime
+  + intermediateStopDwellTime
   + transferPenalty
   + destinationWalkTime
 
@@ -193,6 +195,7 @@ The model applies this growth to population, housing units, employment, commerci
 - No individual agents are simulated.
 - No road congestion assignment is performed.
 - Transit travel time uses station-to-station distance with a circuity factor rather than the complete drawn or road-snapped route geometry.
+- Dwell time is a technology-level gameplay assumption applied at non-terminal stops rather than a schedule-derived value.
 - Station catchments use block-group centroid inclusion rather than parcel or network walking distance.
 - Road snapping moves BRT/light-rail stops to nearby OSM highway geometries and uses the extracted OSM road graph to draw route geometry between consecutive stops when a connected path is available.
 - Station placement projects stations onto the selected transit line geometry. In build mode, dragging a station also pulls the route geometry: stations on existing route vertices move that vertex, while stations between vertices insert a new route vertex at the stop.

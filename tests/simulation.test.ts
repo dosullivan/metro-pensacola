@@ -6,7 +6,7 @@ import { calculateAccessibilityScores } from '../src/simulation/accessibility';
 import { calculateStationCatchment } from '../src/simulation/catchment';
 import { averageWaitTime, calculateConstructionCost, calculateLineMileage } from '../src/simulation/costs';
 import { projectDevelopment } from '../src/simulation/development';
-import { lineMileage } from '../src/simulation/geo';
+import { distanceMiles, lineMileage } from '../src/simulation/geo';
 import {
   estimateCarGeneralizedTime,
   estimateNetworkRidership,
@@ -113,6 +113,24 @@ function testLine(overrides: Partial<TransitLine> = {}): TransitLine {
     ],
     ...overrides
   };
+}
+
+function lineWithStationCount(stationCount: number, lineId = `line-${stationCount}`): TransitLine {
+  const coordinates = Array.from(
+    { length: stationCount },
+    (_, index) => [-87.24 + index * 0.03, 30.42] as [number, number]
+  );
+  return testLine({
+    id: lineId,
+    geometry: coordinates,
+    stations: coordinates.map((coordinate, order) => ({
+      id: `${lineId}-station-${order}`,
+      lineId,
+      name: `Station ${order + 1}`,
+      coordinate,
+      order
+    }))
+  });
 }
 
 describe('simulation primitives', () => {
@@ -277,6 +295,69 @@ describe('routing and ridership', () => {
     expect(path).toBeDefined();
     expect(path?.lineIds).toContain(line.id);
     expect(path?.totalMinutes).toBeGreaterThan(0);
+  });
+
+  it('adds dwell time when a through trip gains an intermediate station', () => {
+    const assumptions = cloneAssumptions();
+    const lineWithStop = lineWithStationCount(3, 'with-stop');
+    const origin = lineWithStop.stations[0].coordinate;
+    const destination = lineWithStop.stations[2].coordinate;
+    const directLine = testLine({
+      id: 'direct',
+      geometry: [origin, destination],
+      stations: [
+        { id: 'direct-origin', lineId: 'direct', name: 'Origin', coordinate: origin, order: 0 },
+        { id: 'direct-destination', lineId: 'direct', name: 'Destination', coordinate: destination, order: 1 }
+      ]
+    });
+    const directPath = fastestTransitPath(origin, destination, [directLine], assumptions);
+    const stoppingPath = fastestTransitPath(origin, destination, [lineWithStop], assumptions);
+
+    expect(stoppingPath?.totalMinutes).toBeCloseTo(
+      (directPath?.totalMinutes ?? 0) + assumptions.technologies.brt.dwellMinutesPerStop,
+      6
+    );
+  });
+
+  it('charges dwell at every non-terminal stop on an end-to-end trip', () => {
+    const assumptions = cloneAssumptions();
+    const noDwellAssumptions = cloneAssumptions();
+    noDwellAssumptions.technologies.brt.dwellMinutesPerStop = 0;
+    const line = lineWithStationCount(4);
+    const origin = line.stations[0].coordinate;
+    const destination = line.stations[3].coordinate;
+    const path = fastestTransitPath(origin, destination, [line], assumptions);
+    const noDwellPath = fastestTransitPath(origin, destination, [line], noDwellAssumptions);
+
+    expect(path?.totalMinutes).toBeCloseTo(
+      (noDwellPath?.totalMinutes ?? 0) + assumptions.technologies.brt.dwellMinutesPerStop * 2,
+      8
+    );
+  });
+
+  it('reproduces distance-speed routing when dwell time is zero', () => {
+    const assumptions = cloneAssumptions();
+    assumptions.technologies.brt.dwellMinutesPerStop = 0;
+    const line = lineWithStationCount(3);
+    const path = fastestTransitPath(
+      line.stations[0].coordinate,
+      line.stations[2].coordinate,
+      [line],
+      assumptions
+    );
+    const expectedInVehicleMinutes =
+      line.stations.slice(0, -1).reduce((sum, station, index) => (
+        sum +
+        distanceMiles(station.coordinate, line.stations[index + 1].coordinate) *
+          assumptions.roadCircuityFactor /
+          assumptions.technologies.brt.averageSpeedMph *
+          60
+      ), 0);
+
+    expect(path?.totalMinutes).toBeCloseTo(
+      expectedInVehicleMinutes + line.headwayMinutes / 2,
+      8
+    );
   });
 
   it('matches the per-pair routing oracle when paths are cached by origin', () => {
@@ -469,13 +550,20 @@ describe('routing and ridership', () => {
     const scenario = cloneScenario(DEMO_SCENARIO);
     scenario.assumptions.defaultFare = 0;
     scenario.assumptions.carCostPerMile = 0;
+    Object.values(scenario.assumptions.technologies).forEach((technology) => {
+      technology.dwellMinutesPerStop = 0;
+    });
 
     const result = runSimulation(scenario, PENSACOLA_ZONES);
     expect(result.dailyRidership).toBeCloseTo(541.7260800613443, 8);
   });
 
   it('keeps default demo ridership within the calibration band', () => {
-    const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
+    const scenario = cloneScenario(DEMO_SCENARIO);
+    Object.values(scenario.assumptions.technologies).forEach((technology) => {
+      technology.dwellMinutesPerStop = 0;
+    });
+    const result = runSimulation(scenario, PENSACOLA_ZONES);
     const previousRidership = 541.7260800613443;
 
     expect(result.dailyRidership).toBeGreaterThan(previousRidership * 0.75);

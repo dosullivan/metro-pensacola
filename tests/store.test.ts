@@ -55,6 +55,8 @@ describe('scenario store simulation action', () => {
     const legacyAssumptions = legacyScenario.assumptions as Partial<Scenario['assumptions']>;
     delete legacyAssumptions.valueOfTimeDollarsPerHour;
     delete legacyAssumptions.carCostPerMile;
+    delete (legacyAssumptions.technologies?.brt as Partial<Scenario['assumptions']['technologies']['brt']>)
+      .dwellMinutesPerStop;
     const currentState = useScenarioStore.getState();
     const merge = useScenarioStore.persist.getOptions().merge;
     const mergedState = merge?.(
@@ -70,6 +72,9 @@ describe('scenario store simulation action', () => {
       DEFAULT_ASSUMPTIONS.valueOfTimeDollarsPerHour
     );
     expect(mergedScenario.assumptions.carCostPerMile).toBe(DEFAULT_ASSUMPTIONS.carCostPerMile);
+    expect(mergedScenario.assumptions.technologies.brt.dwellMinutesPerStop).toBe(
+      DEFAULT_ASSUMPTIONS.technologies.brt.dwellMinutesPerStop
+    );
   });
 
   it('shows an explicit notice when there is no usable service', () => {

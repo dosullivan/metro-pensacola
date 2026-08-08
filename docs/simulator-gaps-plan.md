@@ -30,6 +30,8 @@ In-vehicle time is pure distance/speed, so adding intermediate stops is free —
 - Add `dwellMinutesPerStop` per technology (or one global assumption) in `assumptions.ts`; each intermediate station on a path adds dwell to in-vehicle time in `buildTransitGraph` edge costs (charge dwell on arrival at each non-terminal stop).
 - Tests: inserting a station between two others increases through-riders' travel time by the dwell; end-to-end time on an N-station line includes (N−2) dwells; zero dwell reproduces today's times.
 
+Status: completed. Default dwell assumptions range from 0.4 minutes for BRT to 0.65 minutes for metro technologies and merge into existing saved scenarios.
+
 ## Phase 4 — Capacity and crowding from segment loads
 
 Technologies differ only in speed and cost. `lineRidership` counts every rider who touches a line anywhere, so it cannot serve as a load; crowding needs directed segment loads.

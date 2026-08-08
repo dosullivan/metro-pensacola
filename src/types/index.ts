@@ -24,6 +24,7 @@ export interface TransitTechnology {
   capitalCostPerMile: number;
   stationCost: number;
   averageSpeedMph: number;
+  dwellMinutesPerStop: number;
   baseOperatingCostPer15Miles: number;
   color: string;
 }
