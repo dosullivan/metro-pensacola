@@ -14,7 +14,11 @@ import {
   type CorridorCollection
 } from '../../simulation/snapping';
 import { nearestTransferStation, transferPartnersForStation } from '../../simulation/transfers';
+import { vehiclePositionsForLine } from '../../simulation/animation';
 import type { Coordinate, OverlayKey, Scenario, SimulationResults, SimulationZone, TransitLine } from '../../types';
+
+// One real second represents one minute of service so vehicles remain legible at map scale.
+const VEHICLE_DISPLAY_TIME_SCALE = 60;
 
 const overlayPriority: OverlayKey[] = [
   'development',
@@ -204,6 +208,36 @@ function emptyFeatureCollection(): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features: [] };
 }
 
+function vehicleFeatures(scenario: Scenario, elapsedSeconds: number): GeoJSON.FeatureCollection {
+  const lines = scenario.lines.filter(
+    (line) =>
+      line.geometry.length >= 2 &&
+      (scenario.gameMode !== 'career' || isLineOpen(line, scenario.simulationYear))
+  );
+  return {
+    type: 'FeatureCollection',
+    features: lines.flatMap((line) =>
+      vehiclePositionsForLine(
+        line,
+        scenario.assumptions.technologies[line.technology].averageSpeedMph,
+        elapsedSeconds * VEHICLE_DISPLAY_TIME_SCALE
+      ).map((vehicle, index) => ({
+        type: 'Feature' as const,
+        properties: {
+          id: `${line.id}-vehicle-${index}`,
+          lineId: line.id,
+          color: line.color,
+          direction: vehicle.direction
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: vehicle.coordinate
+        }
+      }))
+    )
+  };
+}
+
 function addMapSourcesAndLayers(map: LibreMap) {
   if (!map.getSource('zones')) {
     map.addSource('zones', {
@@ -295,6 +329,25 @@ function addMapSourcesAndLayers(map: LibreMap) {
         'line-width': 5,
         'line-opacity': 0.7,
         'line-dasharray': [1.5, 1.5]
+      }
+    });
+  }
+
+  if (!map.getSource('transit-vehicles')) {
+    map.addSource('transit-vehicles', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'transit-vehicles',
+      type: 'circle',
+      source: 'transit-vehicles',
+      paint: {
+        'circle-radius': 5,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': '#fffaf1',
+        'circle-stroke-width': 1.5,
+        'circle-opacity': 0.96
       }
     });
   }
@@ -415,6 +468,65 @@ export function TransitMap() {
   useEffect(() => {
     sourceDataRef.current = sourceData;
   }, [sourceData]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    let animationFrame: number | undefined;
+    let elapsedSeconds = 0;
+    let lastTimestamp: number | undefined;
+    let started = false;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+    const renderVehicles = () => {
+      setGeoJsonSource(map, 'transit-vehicles', vehicleFeatures(scenario, elapsedSeconds));
+    };
+    const tick = (timestamp: number) => {
+      animationFrame = undefined;
+      if (document.hidden) {
+        lastTimestamp = undefined;
+        return;
+      }
+      if (lastTimestamp !== undefined) {
+        elapsedSeconds += Math.max(0, timestamp - lastTimestamp) / 1000;
+      }
+      lastTimestamp = timestamp;
+      renderVehicles();
+      animationFrame = window.requestAnimationFrame(tick);
+    };
+    const start = () => {
+      if (started) return;
+      started = true;
+      addMapSourcesAndLayers(map);
+      renderVehicles();
+      if (!reduceMotion && !document.hidden) {
+        animationFrame = window.requestAnimationFrame(tick);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+        animationFrame = undefined;
+        lastTimestamp = undefined;
+      } else if (started && !reduceMotion && animationFrame === undefined) {
+        animationFrame = window.requestAnimationFrame(tick);
+      }
+    };
+
+    if (map.isStyleLoaded()) start();
+    else map.once('load', start);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      map.off('load', start);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+      if (mapRef.current === map) {
+        setGeoJsonSource(map, 'transit-vehicles', emptyFeatureCollection());
+      }
+    };
+  }, [scenario]);
 
   useEffect(() => {
     if (!roadSnapEnabled || osmCorridors) {
@@ -564,6 +676,14 @@ export function TransitMap() {
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current.clear();
 
+    const stationActivity = new globalThis.Map(
+      (scenario.results?.stationResults ?? []).map((result) => [
+        result.stationId,
+        result.entries + result.exits
+      ])
+    );
+    const maxStationActivity = Math.max(0, ...stationActivity.values());
+
     for (const line of scenario.lines) {
       for (const station of line.stations) {
         const element = document.createElement('button');
@@ -572,10 +692,15 @@ export function TransitMap() {
           scenario.lines,
           transferSnapDistanceFeet
         );
+        const activity = stationActivity.get(station.id) ?? 0;
+        const isOpen = scenario.gameMode !== 'career' || isLineOpen(line, scenario.simulationYear);
+        const activityRatio = maxStationActivity > 0 ? Math.sqrt(activity / maxStationActivity) : 0;
         element.className = `station-marker${station.id === selectedStationId ? ' is-selected' : ''}${
           transferPartners.length > 0 ? ' is-transfer' : ''
-        }${scenario.gameMode === 'career' && !isLineOpen(line, scenario.simulationYear) ? ' is-construction' : ''}`;
+        }${!isOpen ? ' is-construction' : ''}${isOpen && activity > 0 ? ' is-active' : ''}`;
         element.style.setProperty('--station-color', line.color);
+        element.style.setProperty('--activity-scale', String(1.4 + activityRatio * 1.8));
+        element.style.setProperty('--activity-opacity', String(0.2 + activityRatio * 0.45));
         element.title =
           transferPartners.length > 0
             ? `${station.name} - transfer to ${transferPartners.map((partner) => partner.lineName).join(', ')}`
@@ -603,6 +728,7 @@ export function TransitMap() {
     mode,
     scenario.lines,
     scenario.gameMode,
+    scenario.results,
     scenario.simulationYear,
     selectedLineId,
     selectedStationId,

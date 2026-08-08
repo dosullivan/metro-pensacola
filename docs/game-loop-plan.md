@@ -61,6 +61,8 @@ Pure theater, disproportionate payoff. No model impact.
 - Station ridership pulses scaled by entries+exits; dashed under-construction styling (shared with Phase 3).
 - Tests: unit-test the position-interpolation function (distance along polyline at time t); visual check in browser.
 
+Status: completed. Open lines now render a headway-derived fleet moving out and back along the full drawn polyline. Geographic distance interpolation and each technology's average speed determine position; a display clock advances one service minute per real second so movement remains visible at regional map scale. Animation pauses while the tab is hidden, resumes without a time jump, and stays static when reduced motion is requested. Stations with simulation activity emit square-root-scaled pulses based on entries plus exits, while closed lines retain Phase 3's dashed construction treatment and show neither vehicles nor activity pulses. The animation is pure theater: no vehicle or pulse state feeds back into simulation results. Unit tests cover interpolation, endpoints, fleet spacing, direction, determinism, and degenerate geometry, and the map was checked in-browser before shipping.
+
 ## Sequencing and scope notes
 
 - Order is deliberate: each phase ships something playable alone. Live sim (1) makes everything after it feel responsive; budgets (2) create the early game before time (3) creates the long game; goals (4) give time a point; theater (5) is last because it depends on nothing.

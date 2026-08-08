@@ -352,3 +352,11 @@ Gameplay event thresholds and effects live beside the objectives in `src/data/ga
 - At 100 daily entries plus exits at the busiest station, rezoning adds `0.15 × catchment coverage fraction` to each zone's development capacity within one mile, capped at a total capacity of 1 during simulation.
 
 Completed event IDs prevent repeated effects. Airport demand lives in assumptions; station capacity bonuses, council state, objective results, and the outcome live in Career progress. Simulation fingerprinting includes the capacity-bonus map, so a station event automatically causes one fresh worker result with its mechanical effect applied.
+
+## Map animation
+
+Map life is a presentation layer and has no model impact. Each open line displays an out-and-back fleet whose count comes from route length, technology average speed, and scheduled headway. Vehicles are evenly spaced around that round trip and positioned by geographic distance along the complete drawn polyline rather than by vertex index. A display clock advances one service minute per real second so technology-relative movement remains visible at regional map scale.
+
+The vehicle clock pauses when the document is hidden and resumes without counting the hidden interval. It remains static when the browser requests reduced motion. Under-construction Career lines have neither vehicles nor station activity; their existing dashed line style remains the construction signal.
+
+After a simulation result is available, an open station's pulse strength is based on daily entries plus exits. Square-root scaling keeps the busiest stations visibly stronger without making lower-volume stations disappear. Pulse animation also respects reduced-motion preferences.

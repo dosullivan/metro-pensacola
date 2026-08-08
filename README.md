@@ -39,6 +39,7 @@ npm run build
 - Use advisory capital and operating budgets in Sandbox, or persistent hard capital funds in Career. Career construction spends funds, demolition returns 50%, and one-time ridership, access, and crowding milestones award new grants.
 - Advance the Career clock one year at a time. New and upgraded lines remain under construction for a technology- and mileage-based duration, then begin carrying riders and incurring operating cost; annual subsidy overruns pause for a player choice.
 - Pursue deadline-based Career objectives through Year 20 while deterministic airport, council-review, and station-development events change demand, subsidy support, and growth capacity.
+- Watch open-line vehicles move at technology-specific speeds and headway-derived spacing, with station pulses showing simulated entries and exits. These map animations are visual only and do not affect results.
 - Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 
 ## Architecture
@@ -62,6 +63,7 @@ src/
     ridership.ts
     routing.ts
     runSimulation.ts
+    animation.ts
     snapping.ts
     transfers.ts
   store/
@@ -118,5 +120,5 @@ This is not a microscopic traffic simulator. It uses aggregate zone-to-zone dema
 
 - `src/data/pensacola/zones.ts` is imported synchronously and is roughly 10 MB before bundling, so production startup and bundle size need future optimization through lazy loading or code splitting.
 - The roughly 34 MB OSM corridor GeoJSON is loaded only after Road Snap is enabled. Its road graph is then built in the browser, which can produce a noticeable one-time delay.
-- Simulation work still scores about 87,000 ordered origin-destination pairs per model pass, but transit paths are computed once per origin zone and reused across destinations. Larger networks may eventually need a web worker or further demand-performance work.
+- Simulation work still scores about 87,000 ordered origin-destination pairs per model pass, but transit paths are computed once per origin zone and reused across destinations. Browser runs execute in a Web Worker to keep the map responsive; larger networks may still need further demand-performance work.
 - Scenarios are local to a browser profile. There is no account sync, backend storage, or import/export workflow yet.

@@ -784,6 +784,7 @@ select {
 }
 
 .station-marker {
+  position: relative;
   width: 18px;
   height: 18px;
   border: 3px solid #11110f;
@@ -792,6 +793,36 @@ select {
   box-shadow:
     0 0 0 2px rgba(244, 241, 234, 0.86),
     0 8px 18px rgba(0, 0, 0, 0.36);
+}
+
+.station-marker.is-active::after {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--station-color, #2dd4bf);
+  border-radius: 50%;
+  opacity: var(--activity-opacity, 0.35);
+  content: '';
+  pointer-events: none;
+  animation: station-activity-pulse 2.2s ease-out infinite;
+}
+
+@keyframes station-activity-pulse {
+  from {
+    opacity: var(--activity-opacity, 0.35);
+    transform: scale(0.75);
+  }
+  to {
+    opacity: 0;
+    transform: scale(var(--activity-scale, 2));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-marker.is-active::after {
+    opacity: var(--activity-opacity, 0.35);
+    transform: scale(1.25);
+    animation: none;
+  }
 }
 
 .station-marker.is-selected {
