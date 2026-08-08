@@ -208,7 +208,7 @@ originMaximumTransitShare =
   + (1 - maxTransitModeShare) * zeroVehicleHouseholdRate
 ```
 
-The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo corridor has a gameplay calibration band of 75–250 weekday riders. This is a gameplay calibration rather than a regional forecast.
+The 17-minute transit-specific constant places equal-generalized-cost share near 12% for an origin where all households have a vehicle. Origins with more zero-vehicle households receive a higher maximum share using the ACS-derived vehicle-availability field. The conceptual demo network has a gameplay calibration band of 75–350 weekday riders. This is a gameplay calibration rather than a regional forecast.
 
 The fare is treated as a flat one-way system fare; transfers do not add another fare. Daily riders are the sum of OD demand multiplied by transit mode share for OD pairs with a usable transit path. Line, station, transfer, and segment ridership are allocated across the eligible path choices. Reported rider travel-time savings remain physical minutes rather than monetized generalized minutes.
 

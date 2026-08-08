@@ -173,7 +173,7 @@ describe('scenario store simulation action', () => {
     expect(updatedLine).toBeDefined();
     expect(updatedLine?.geometry).toHaveLength(originalPointCount - 1);
     expect(updatedLine?.stations).toHaveLength(originalStationCount - 1);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(scenario.lines.length);
   });
 
   it('restores the bundled demo scenario after its route is deleted', () => {
@@ -185,7 +185,7 @@ describe('scenario store simulation action', () => {
 
     const activeScenario = selectActiveScenario(useScenarioStore.getState());
     expect(activeScenario.id).toBe(DEMO_SCENARIO.id);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(DEMO_SCENARIO.lines.length);
     expect(activeScenario.lines[0].stations.length).toBeGreaterThan(1);
     expect(useScenarioStore.getState().selectedLineId).toBe(activeScenario.lines[0].id);
   });
@@ -225,7 +225,7 @@ describe('scenario store simulation action', () => {
     const line = activeScenario.lines.find((candidate) => candidate.id === lineId);
     expect(line).toBeDefined();
     expect(line?.geometry[1]).toEqual([-87.2, 30.45]);
-    expect(activeScenario.lines).toHaveLength(1);
+    expect(activeScenario.lines).toHaveLength(scenario.lines.length);
     expect(useScenarioStore.getState().selectedLineId).toBe(lineId);
   });
 

@@ -36,7 +36,7 @@ npm run build
 - Toggle population, employment, density, accessibility, ridership, development, land value, and station catchment overlays.
 - Automatically persist scenarios in browser storage, with controls to switch, duplicate, delete, restore, and compare them.
 - Show advisory capital and operating budgets; enabling Budget Limits highlights overruns but does not block construction.
-- Start from a clearly labeled conceptual demo corridor from downtown Pensacola to UWF via Baptist Health, Cordova Mall, PNS airport, and Ferry Pass.
+- Start from a clearly labeled conceptual three-corridor BRT demo network covering downtown, Cordova, Ferry Pass, UWF, West Pensacola, and Pace Boulevard.
 
 ## Architecture
 

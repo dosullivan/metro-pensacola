@@ -876,7 +876,7 @@ describe('routing and ridership', () => {
     });
 
     const result = runSimulation(scenario, PENSACOLA_ZONES);
-    expect(result.dailyRidership).toBeCloseTo(541.7260800613443, 8);
+    expect(result.dailyRidership).toBeCloseTo(1646.797254908448, 8);
   });
 
   it('keeps default demo ridership within the calibration band', () => {
@@ -886,17 +886,17 @@ describe('routing and ridership', () => {
       technology.dwellMinutesPerStop = 0;
     });
     const result = runSimulation(scenario, PENSACOLA_ZONES);
-    const previousRidership = 541.7260800613443;
+    const calibratedRidership = 1248.5188825179691;
 
-    expect(result.dailyRidership).toBeGreaterThan(previousRidership * 0.75);
-    expect(result.dailyRidership).toBeLessThan(previousRidership * 1.25);
+    expect(result.dailyRidership).toBeGreaterThan(calibratedRidership * 0.75);
+    expect(result.dailyRidership).toBeLessThan(calibratedRidership * 1.25);
   });
 
   it('keeps the mode-choice-calibrated demo within its gameplay target band', () => {
     const result = runSimulation(cloneScenario(DEMO_SCENARIO), PENSACOLA_ZONES);
 
     expect(result.dailyRidership).toBeGreaterThan(75);
-    expect(result.dailyRidership).toBeLessThan(250);
+    expect(result.dailyRidership).toBeLessThan(350);
   });
 
   it('decreases ridership monotonically as fares increase', () => {
@@ -974,13 +974,20 @@ describe('development and deterministic runs', () => {
   });
 
   it('identifies an airport station by coordinates rather than its name', () => {
-    const scenario = cloneScenario(DEMO_SCENARIO);
+    const scenario: Scenario = {
+      id: 'airport-fixture',
+      name: 'Airport Fixture',
+      lines: [testLine({ id: 'airport-fixture-line' })],
+      assumptions: cloneAssumptions(),
+      simulationYear: 0,
+      budgetLimitsEnabled: false
+    };
     const airportStation = scenario.lines[0].stations.find(
       (station) => station.coordinate[0] === scenario.assumptions.airportCoordinate[0] &&
         station.coordinate[1] === scenario.assumptions.airportCoordinate[1]
     );
     if (!airportStation) {
-      throw new Error('Demo airport station fixture is missing');
+      throw new Error('Airport station fixture is missing');
     }
     airportStation.name = 'Terminal Connector';
 

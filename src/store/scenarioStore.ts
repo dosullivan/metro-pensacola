@@ -487,7 +487,7 @@ export const useScenarioStore = create<ScenarioState>()(
             compareScenarioIds: state.compareScenarioIds.includes(demo.id)
               ? state.compareScenarioIds
               : [...state.compareScenarioIds, demo.id],
-            simulationNotice: 'Demo corridor restored.'
+            simulationNotice: 'Demo network restored.'
           };
         }),
       renameScenario: (scenarioId, name) =>

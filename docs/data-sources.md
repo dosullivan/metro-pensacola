@@ -109,13 +109,15 @@ The simulation code consumes this interface, so future parcel, GTFS, or local as
 
 ## Demo Scenario Anchors
 
-The bundled demo scenario is a conceptual example, not an official proposal. It uses approximate station anchors for:
+The bundled demo scenario is a conceptual example, not an official proposal. It uses user-drawn route geometry and approximate station anchors for:
 
 - Downtown Pensacola
 - Baptist Health Campus
 - Cordova Mall
-- Pensacola International Airport
 - Ferry Pass
 - University of West Florida
+- West Pensacola
+- Bellview
+- Pace Boulevard
 
-Reference sources used while setting approximate anchors include OpenStreetMap-derived map references, FAA/AirNav airport coordinates for PNS, and public coordinate references for Cordova Mall and UWF. These anchors should be reviewed before using the demo outside gameplay.
+Reference sources used while setting approximate anchors include OpenStreetMap-derived map references and public coordinate references for Cordova Mall and UWF. These anchors should be reviewed before using the demo outside gameplay.
