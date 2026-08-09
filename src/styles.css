@@ -784,7 +784,9 @@ select {
 }
 
 .station-marker {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 22px;
   height: 22px;
   padding: 0;
