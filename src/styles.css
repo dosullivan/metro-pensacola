@@ -785,6 +785,19 @@ select {
 
 .station-marker {
   position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  background: transparent;
+}
+
+.station-marker::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: 18px;
   height: 18px;
   border: 3px solid #11110f;
@@ -793,39 +806,45 @@ select {
   box-shadow:
     0 0 0 2px rgba(244, 241, 234, 0.86),
     0 8px 18px rgba(0, 0, 0, 0.36);
+  content: '';
+  transform: translate(-50%, -50%);
 }
 
 .station-marker.is-active::after {
   position: absolute;
-  inset: -4px;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
   border: 2px solid var(--station-color, #2dd4bf);
   border-radius: 50%;
   opacity: var(--activity-opacity, 0.35);
   content: '';
   pointer-events: none;
   animation: station-activity-pulse 2.2s ease-out infinite;
+  transform: translate(-50%, -50%) scale(0.75);
 }
 
 @keyframes station-activity-pulse {
   from {
     opacity: var(--activity-opacity, 0.35);
-    transform: scale(0.75);
+    transform: translate(-50%, -50%) scale(0.75);
   }
   to {
     opacity: 0;
-    transform: scale(var(--activity-scale, 2));
+    transform: translate(-50%, -50%) scale(var(--activity-scale, 2));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .station-marker.is-active::after {
     opacity: var(--activity-opacity, 0.35);
-    transform: scale(1.25);
+    transform: translate(-50%, -50%) scale(1.25);
     animation: none;
   }
 }
 
-.station-marker.is-selected {
+.station-marker.is-selected::before {
   width: 22px;
   height: 22px;
   box-shadow:
@@ -833,19 +852,19 @@ select {
     0 10px 22px rgba(0, 0, 0, 0.44);
 }
 
-.station-marker.is-transfer {
+.station-marker.is-transfer::before {
   box-shadow:
     0 0 0 2px rgba(244, 241, 234, 0.86),
     0 0 0 6px rgba(250, 204, 21, 0.3),
     0 8px 18px rgba(0, 0, 0, 0.36);
 }
 
-.station-marker.is-construction {
+.station-marker.is-construction::before {
   border-style: dashed;
   opacity: 0.72;
 }
 
-.station-marker.is-selected.is-transfer {
+.station-marker.is-selected.is-transfer::before {
   width: 22px;
   height: 22px;
   box-shadow:

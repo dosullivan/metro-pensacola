@@ -712,7 +712,7 @@ export function TransitMap() {
           setInspectedFeature({ type: 'station', lineId: line.id, stationId: station.id });
         });
 
-        const marker = new maplibregl.Marker({ element, draggable: mode === 'build' })
+        const marker = new maplibregl.Marker({ element, draggable: mode === 'build', anchor: 'center' })
           .setLngLat(station.coordinate)
           .addTo(map);
         marker.on('dragend', () => {
