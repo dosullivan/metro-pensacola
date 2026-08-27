@@ -21,11 +21,7 @@ npm run build
 
 After making code or data changes, run the relevant tests and `npm run build`. For UI/map changes, also smoke-test the local dev server in a browser or with a `curl -I` check.
 
-When work is committed, push it:
-
-```bash
-git push gitea main
-```
+Commit focused work and push it to the default remote when the user asks.
 
 ## Current Data State
 
@@ -100,4 +96,6 @@ The drawn route polyline controls map appearance and construction mileage. Trans
 
 ## Git Hygiene
 
-The repo may contain user changes. Do not revert changes you did not make. Keep commits focused, run verification before committing when practical, and push to `gitea main` after committing so the Mac mini handoff can continue from the latest work.
+The repo may contain user changes. Do not revert changes you did not make. Keep commits focused and run verification before committing when practical.
+
+This repository is public. Do not commit credentials, private hostnames, or personal data. Generated data files come from public OpenStreetMap and US Census sources; see `docs/data-sources.md` for their licensing.

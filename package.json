@@ -2,6 +2,8 @@
   "name": "metro-pensacola",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "description": "A browser-based urban transit planning simulation for the Pensacola, Florida region.",
   "type": "module",
   "scripts": {
     "dev": "vite",

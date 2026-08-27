@@ -121,3 +121,20 @@ The bundled demo scenario is a conceptual example, not an official proposal. It 
 - Pace Boulevard
 
 Reference sources used while setting approximate anchors include OpenStreetMap-derived map references and public coordinate references for Cordova Mall and UWF. These anchors should be reviewed before using the demo outside gameplay.
+
+## Licensing
+
+The source code is MIT licensed. The bundled data is not — each source keeps its own terms.
+
+| Asset | Source | License |
+| --- | --- | --- |
+| `public/data/pensacola/osm-corridors.geojson` | OpenStreetMap via Overpass API | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), © OpenStreetMap contributors |
+| Basemap raster tiles | `tile.openstreetmap.org` | © OpenStreetMap contributors, subject to the [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) |
+| `src/data/pensacola/zones.ts` | ACS, TIGERweb, LEHD/LODES | US federal government work, public domain |
+| `public/data/pensacola/block-groups.geojson` | ACS, TIGERweb, LEHD/LODES | US federal government work, public domain |
+
+ODbL is share-alike: redistributing the corridor extract, or a database derived from it, requires keeping the attribution and offering the derived database under ODbL. Attribution is rendered on the map itself in `src/components/map/TransitMap.tsx`.
+
+The Census inputs are aggregate block-group estimates. They contain no personally identifiable information, and the Census Bureau applies its own disclosure avoidance before publication.
+
+The default basemap points at the OpenStreetMap Foundation's public tile servers, which are volunteer-funded and not intended for heavy or commercial traffic. A deployment expecting real usage should switch `TransitMap.tsx` to a self-hosted or commercial tile source.

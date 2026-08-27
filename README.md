@@ -122,3 +122,14 @@ This is not a microscopic traffic simulator. It uses aggregate zone-to-zone dema
 - The roughly 34 MB OSM corridor GeoJSON is loaded only after Road Snap is enabled. Its road graph is then built in the browser, which can produce a noticeable one-time delay.
 - Simulation work still scores about 87,000 ordered origin-destination pairs per model pass, but transit paths are computed once per origin zone and reused across destinations. Browser runs execute in a Web Worker to keep the map responsive; larger networks may still need further demand-performance work.
 - Scenarios are local to a browser profile. There is no account sync, backend storage, or import/export workflow yet.
+
+## License and Attribution
+
+The Metro Pensacola source code is released under the [MIT License](LICENSE).
+
+The bundled datasets carry their own terms and are **not** covered by the MIT license:
+
+- **OpenStreetMap.** `public/data/pensacola/osm-corridors.geojson` is derived from OpenStreetMap and is licensed under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). © OpenStreetMap contributors. Any redistributed or derived database must keep the same attribution and share-alike terms. The live basemap uses OpenStreetMap raster tiles under the [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/); a heavier deployment should switch to its own tile provider.
+- **US Census Bureau.** The ACS, TIGERweb, and LEHD/LODES inputs behind `src/data/pensacola/zones.ts` and `public/data/pensacola/block-groups.geojson` are US federal government works in the public domain. All values are aggregate block-group estimates and contain no personally identifiable information.
+
+Gameplay-derived fields (`landValueIndex`, `commercialSqFt`, `developmentCapacity`) are invented modeling transforms, not official statistics. See [docs/data-sources.md](docs/data-sources.md).
